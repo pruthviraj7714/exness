@@ -1,8 +1,13 @@
 import { Router } from "express";
 import prisma from "@repo/db";
 import jwt, { type JwtPayload } from "jsonwebtoken";
-import { BACKEND_URL, FRONTEND_URL, JWT_SECRET } from "../config";
-import transporter from "../transporter";
+import {
+  AUTH_JWT_SECRET,
+  BACKEND_URL,
+  EMAIL_JWT_SECRET,
+  FRONTEND_URL,
+} from "../config";
+import transporter from "../mail/transporter";
 import authMiddleware from "../middleware/authMiddleware";
 
 const userRouter = Router();
@@ -41,13 +46,13 @@ userRouter.post("/signup", async (req, res) => {
       {
         sub: user.email,
       },
-      JWT_SECRET
+      EMAIL_JWT_SECRET
     );
 
     if (process.env.NODE_ENV === "production") {
       transporter.sendMail({
         from: "bridentony45@gmail.com",
-        to: "melodybollywood2@gmail.com",
+        to: email,
         html: `
               <a href='${BACKEND_URL}/api/v1/signin/post?token=${token}'>
               Click to Go to dashboard
@@ -98,13 +103,13 @@ userRouter.post("/signin", async (req, res) => {
       {
         sub: existedUser.email,
       },
-      JWT_SECRET
+      EMAIL_JWT_SECRET
     );
 
     if (process.env.NODE_ENV === "production") {
       transporter.sendMail({
         from: "bridentony45@gmail.com",
-        to: "melodybollywood2@gmail.com",
+        to: email,
         html: `
               <a href='${BACKEND_URL}/api/v1/signin/post?token=${token}'>
               Click to Go to dashboard
@@ -131,7 +136,7 @@ userRouter.get("/signin/post", async (req, res) => {
   try {
     const token = req.query.token as string;
 
-    const user = jwt.verify(token, JWT_SECRET) as JwtPayload;
+    const user = jwt.verify(token, EMAIL_JWT_SECRET) as JwtPayload;
 
     const userEmail = user.email;
 
@@ -152,7 +157,7 @@ userRouter.get("/signin/post", async (req, res) => {
       {
         sub: isUserExists.email,
       },
-      JWT_SECRET
+      AUTH_JWT_SECRET
     );
 
     res.cookie(`authToken`, authToken, {

@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { verify, type JwtPayload } from "jsonwebtoken";
-import { JWT_SECRET } from "../config";
+import { AUTH_JWT_SECRET } from "../config";
 
 const authMiddleware = (req : Request, res : Response , next : NextFunction) => {
     try {
@@ -13,7 +13,7 @@ const authMiddleware = (req : Request, res : Response , next : NextFunction) => 
             return;
         }
 
-        const decoded = verify(token, JWT_SECRET) as JwtPayload;
+        const decoded = verify(token, AUTH_JWT_SECRET) as JwtPayload;
         req.email = decoded.sub;
 
         next();
