@@ -41,12 +41,15 @@ interface IOrder {
   userId : string;
   asset : string;
   margin : number;
+  event?: "ORDER_PLACED" | "ORDER_CLOSED"
   leverage : number;
   slippage : number;
   type : "LONG" | "SHORT",
   openPrice : number;
   pnl? : number;
   qty?: number;
+  opendAt? : number;
+  closedAt? : number;
   streamId: string;
 }
 

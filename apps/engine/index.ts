@@ -7,7 +7,6 @@ import {
 } from "./config";
 import fs from "fs";
 import type { IEventData, IOrder, IPriceData } from "./types/types";
-import { DecimalsMap } from "@repo/common";
 
 const prices: Record<string, IPriceData> = {};
 const balances: Record<string, number> = {};
@@ -76,6 +75,8 @@ const autoCloseOrder = async (order: IOrder) => {
   let finalOrderData = {
     ...order,
     closePrice: currentPrice,
+    event : "ORDER_CLOSED",
+    closedAt : Date.now(),
     pnl,
   };
 
@@ -155,9 +156,11 @@ const processPlaceOrder = async (event: IEventData) => {
         slippage: slippage,
         type: type,
         userId: userId,
+        event : "ORDER_PLACED",
         openPrice,
         qty: quantity,
         streamId: event.streamId,
+        opendAt : Date.now()
       };
 
       openOrders[event.data.userId]!.push(orderData);
@@ -206,6 +209,8 @@ const processCancelOrder = async (event: IEventData) => {
 
       let finalOrderData = {
         ...order,
+        event : "ORDER_CLOSED",
+        closedAt : Date.now(),
         closePrice: currentPrice,
         pnl,
       };
