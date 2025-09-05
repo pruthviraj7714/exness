@@ -34,7 +34,7 @@ const createConsumerGroup = async () => {
       "CREATE",
       ENGINE_STREAM,
       GROUP_NAME,
-      "$",
+      "0",
       "MKSTREAM"
     );
   } catch (error: any) {
@@ -57,6 +57,13 @@ const saveSnapshot = () => {
   fs.appendFileSync("./snapshot.json", JSON.stringify(currState) + "\n");
 };
 
+const handlePriceUpdate = () => {
+  Object.keys(openOrders).forEach((key, value) => {
+    console.log(key);
+    console.log(value);
+  })
+}
+
 const processPlaceOrder = async (event: IEventData) => {
   try {
     if (event.event === "PLACE_ORDER") {
@@ -65,25 +72,25 @@ const processPlaceOrder = async (event: IEventData) => {
       openOrders[event.data.userId] = openOrders[event.data.userId] || [];
 
       let orderData: IOrder = {
+        id: event.data.id,
         asset: event.data.asset,
         leverage: event.data.leverage,
         margin: event.data.margin,
         slippage: event.data.slippage,
         type: event.data.type,
         userId: event.data.userId,
-        id: event.data.id,
       };
 
       openOrders[event.data.userId]!.push(orderData);
+
+      await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
+
       await redisclient.xadd(
         RESULTS_STREAM,
         "*",
         "data",
         JSON.stringify(orderData)
       );
-
-      console.log(balances);
-      console.log(openOrders);
     }
   } catch (error) {
     console.error(
@@ -95,6 +102,16 @@ const processPlaceOrder = async (event: IEventData) => {
 const processCancelOrder = async (event: IEventData) => {
   try {
     if (event.event === "CANCEL_ORDER") {
+      openOrders[event.data.userId]?.filter(
+        (order) => order.id !== event.data.orderId
+      );
+      await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
+      await redisclient.xadd(
+        RESULTS_STREAM,
+        "*",
+        "data",
+        JSON.stringify(event.data)
+      );
     }
   } catch (error) {
     console.error(
@@ -120,11 +137,13 @@ const processEvents = (events: IEventData[]) => {
             (val: string) =>
               (prices[val] = {
                 decimal: event.data[val]!.decimal,
-                price: event.data[val]!.price,
+                bid: event.data[val]!.bid,
+                ask: event.data[val]!.ask,
               })
           );
         }
         await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
+        handlePriceUpdate()
         break;
       }
       default: {
@@ -177,5 +196,4 @@ async function main() {
 }
 
 main();
-
 setInterval(saveSnapshot, 5000);

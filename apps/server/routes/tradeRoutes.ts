@@ -2,7 +2,7 @@ import { Router } from "express";
 import authMiddleware from "../middleware/authMiddleware";
 import { OrderSchema } from "@repo/common";
 import redisclient from "@repo/redisclient";
-import { ENGINE_STREAM, RESULTS_STREAM } from "../config";
+import { ENGINE_STREAM, GROUP_NAME, RESULTS_STREAM } from "../config";
 
 const tradeRouter = Router();
 
@@ -43,6 +43,7 @@ const waitForResults = async (
         const isResult = results.find((res) => res.id === orderId);
         if (isResult) {
           resolve(isResult);
+          await redisclient.xack(RESULTS_STREAM, GROUP_NAME, isResult.streamId)
           isResolved = true;
         }
       }
@@ -64,6 +65,7 @@ const waitForResults = async (
 
 tradeRouter.post("/create", authMiddleware, async (req, res) => {
   const { data, error } = OrderSchema.safeParse(req.body);
+  let startTime = Date.now();
   const userId = req.userId!;
   if (error) {
     res.status(400).json({
@@ -103,6 +105,7 @@ tradeRouter.post("/create", authMiddleware, async (req, res) => {
     res.status(200).json({
       message: "Order successfully Placed",
       result,
+      time : Date.now() - startTime
     });
   } catch (error) {
     res.status(500).json({
@@ -124,7 +127,6 @@ tradeRouter.post("/close/:orderId", authMiddleware, async (req, res) => {
     };
 
   try {
-
     redisclient.xadd(ENGINE_STREAM, "*", "data", JSON.stringify(orderData));
 
     const result = await waitForResults(orderId, 10_000);

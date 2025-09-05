@@ -4,7 +4,8 @@ import { ENGINE_STREAM } from "./config";
 
 interface IPriceData {
   asset: string;
-  price: number;
+  bid: number;
+  ask: number;
   decimal: number;
 }
 
@@ -31,13 +32,14 @@ async function main() {
   ws.onmessage = ({ data }) => {
     const payload = JSON.parse(data.toString());
 
-    if (!payload.data.a || !payload.data.s) return;
+    if (!payload.data.a || !payload.data.b || !payload.data.s) return;
 
     const asset = payload.data.s.split("_")[0];
     const symbolDecimals = DecimalsMap[asset]!;
 
     marketFeed[asset] = {
-      price: parseFloat(payload.data.a) * 10 ** symbolDecimals,
+      bid : parseFloat(payload.data.a) * 10 ** symbolDecimals,
+      ask : parseFloat(payload.data.b) * 10 ** symbolDecimals,
       decimal: symbolDecimals,
       asset,
     };
@@ -49,6 +51,7 @@ setInterval(async () => {
     event: "PRICE_UPDATE",
     data: marketFeed,
   };
+  
   await redisclient.xadd(
     ENGINE_STREAM,
     "MAXLEN",

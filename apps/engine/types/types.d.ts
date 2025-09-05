@@ -30,7 +30,8 @@ interface IPriceUpdateEvent extends IBaseEvent {
     string,
     {
       decimal: number;
-      price: number;
+      bid: number;
+      ask : number;
     }
   >;
 }
@@ -46,7 +47,8 @@ interface IOrder {
 }
 
 export interface IPriceData {
-  price: number;
+  bid : number;
+  ask : number;
   decimal: number;
 }
 
