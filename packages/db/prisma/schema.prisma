@@ -15,7 +15,37 @@ datasource db {
 }
 
 model User {
-  id         String @id @default(uuid())
-  email      String @unique
-  usdBalance Int    @default(0)
+  id         String     @id @default(uuid())
+  email      String     @unique
+  usdBalance Int        @default(0)
+  positions  Position[]
+}
+
+model Position {
+  id         String         @id @default(uuid())
+  asset      String
+  leverage   Int
+  margin     Int
+  slippage   Int
+  type       PositionType
+  userId     String
+  openPrice  Int
+  qty        Int
+  status     PositionStatus @default(OPEN)
+  closePrice Int?
+  pnl        Int?
+  openedAt   DateTime
+  closedAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id])
+}
+
+enum PositionStatus {
+  OPEN
+  CLOSE
+}
+
+enum PositionType {
+  LONG
+  SHORT
 }
