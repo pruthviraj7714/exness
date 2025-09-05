@@ -44,6 +44,10 @@ interface IOrder {
   leverage : number;
   slippage : number;
   type : "LONG" | "SHORT",
+  openPrice : number;
+  pnl? : number;
+  qty?: number;
+  streamId: string;
 }
 
 export interface IPriceData {

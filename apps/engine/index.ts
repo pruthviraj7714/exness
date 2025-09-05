@@ -7,6 +7,7 @@ import {
 } from "./config";
 import fs from "fs";
 import type { IEventData, IOrder, IPriceData } from "./types/types";
+import { DecimalsMap } from "@repo/common";
 
 const prices: Record<string, IPriceData> = {};
 const balances: Record<string, number> = {};
@@ -57,28 +58,106 @@ const saveSnapshot = () => {
   fs.appendFileSync("./snapshot.json", JSON.stringify(currState) + "\n");
 };
 
-const handlePriceUpdate = () => {
-  Object.keys(openOrders).forEach((key, value) => {
-    console.log(key);
-    console.log(value);
-  })
-}
+const autoCloseOrder = async (order: IOrder) => {
+  const assetPrice = prices[order.asset]!;
+
+  let currentPrice =
+    order.type === "LONG"
+      ? assetPrice.bid / 10 ** assetPrice.decimal
+      : assetPrice.ask / 10 ** assetPrice.decimal;
+
+  const pnl =
+    order.type === "LONG"
+      ? (currentPrice - order.openPrice) * order.qty!
+      : (order.openPrice - currentPrice) * order.qty!;
+
+  order.pnl = pnl;
+
+  let finalOrderData = {
+    ...order,
+    closePrice: currentPrice,
+    pnl,
+  };
+
+  console.log(finalOrderData);
+
+  openOrders[order.userId] = openOrders[order.userId]?.filter((odr) => odr.id !== order.id) || [];
+  balances[order.userId] = (balances[order.userId] || 0) + order.pnl;
+
+  await redisclient.xack(ENGINE_STREAM, GROUP_NAME, order.streamId);
+  await redisclient.xadd(
+    RESULTS_STREAM,
+    "*",
+    "data",
+    JSON.stringify(finalOrderData)
+  );
+};
+
+const handleCalculatePNL = async (order: IOrder, currentPrices: IPriceData) => {
+  let pnl: number;
+
+  let openPrice = order.openPrice;
+  let currentPrice =
+    order.type === "LONG"
+      ? currentPrices.bid / 10 ** currentPrices.decimal
+      : currentPrices.ask / 10 ** currentPrices.decimal;
+
+  pnl =
+    order.type === "LONG"
+      ? (currentPrice - openPrice) * order.qty!
+      : (openPrice - currentPrice) * order.qty!;
+
+  order.pnl = pnl;
+
+  const equity = order.margin + pnl;
+
+  if (equity <= order.margin * 0.1) {
+    console.log("Order is closing due to low margin (liquidation)");
+    await autoCloseOrder(order);
+  }
+};
+
+const handlePriceUpdate = (latestPrices: Record<string, IPriceData>) => {
+  Object.keys(openOrders).forEach((userId) => {
+    openOrders[userId]?.forEach(
+      async (order) =>
+        await handleCalculatePNL(order, latestPrices[order.asset]!)
+    );
+  });
+};
 
 const processPlaceOrder = async (event: IEventData) => {
   try {
     if (event.event === "PLACE_ORDER") {
-      balances[event.data.userId] = balances[event.data.userId] || 5000;
+      const { asset, leverage, id, margin, slippage, type, userId } =
+        event.data;
+      balances[userId] = balances[userId] || 5000;
 
-      openOrders[event.data.userId] = openOrders[event.data.userId] || [];
+      openOrders[userId] = openOrders[userId] || [];
+
+      const openPrice =
+        type === "LONG"
+          ? prices[asset]?.ask! / 10 ** prices[asset]?.decimal!
+          : prices[asset]?.bid! / 10 ** prices[asset]?.decimal!;
+
+      if (!openPrice) {
+        console.log("open price not found!");
+        return;
+      }
+
+      const quantity = (margin * leverage) / openPrice;
 
       let orderData: IOrder = {
-        id: event.data.id,
-        asset: event.data.asset,
-        leverage: event.data.leverage,
-        margin: event.data.margin,
-        slippage: event.data.slippage,
-        type: event.data.type,
-        userId: event.data.userId,
+        id: id,
+        asset: asset,
+        leverage: leverage,
+        margin: margin,
+        slippage: slippage,
+        type: type,
+        userId: userId,
+        openPrice,
+        qty: quantity,
+        streamId: event.streamId,
       };
 
       openOrders[event.data.userId]!.push(orderData);
@@ -102,15 +181,46 @@ const processPlaceOrder = async (event: IEventData) => {
 const processCancelOrder = async (event: IEventData) => {
   try {
     if (event.event === "CANCEL_ORDER") {
-      openOrders[event.data.userId]?.filter(
-        (order) => order.id !== event.data.orderId
-      );
+      const { orderId, userId } = event.data;
+
+      const order = openOrders[userId]?.find((order) => order.id === orderId);
+
+      if (!order) {
+        console.log("order not found!");
+        return;
+      }
+
+      const assetPrice = prices[order.asset]!;
+
+      let currentPrice =
+        order.type === "LONG"
+          ? assetPrice.bid / 10 ** assetPrice.decimal
+          : assetPrice.ask / 10 ** assetPrice.decimal;
+
+      const pnl =
+        order.type === "LONG"
+          ? (currentPrice - order.openPrice) * order.qty!
+          : (order.openPrice - currentPrice) * order.qty!;
+
+      order.pnl = pnl;
+
+      let finalOrderData = {
+        ...order,
+        closePrice: currentPrice,
+        pnl,
+      };
+
+      console.log(finalOrderData);
+
+      openOrders[userId] = openOrders[userId]?.filter((order) => order.id !== orderId) || [];
+      balances[order.userId] = (balances[order.userId] || 0) + order.pnl;
+
       await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
       await redisclient.xadd(
         RESULTS_STREAM,
         "*",
         "data",
-        JSON.stringify(event.data)
+        JSON.stringify(finalOrderData)
       );
     }
   } catch (error) {
@@ -142,8 +252,10 @@ const processEvents = (events: IEventData[]) => {
               })
           );
         }
+        handlePriceUpdate(prices);
+        console.log(openOrders);
+        
         await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
-        handlePriceUpdate()
         break;
       }
       default: {
