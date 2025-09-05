@@ -14,7 +14,7 @@ const authMiddleware = (req : Request, res : Response , next : NextFunction) => 
         }
 
         const decoded = verify(token, AUTH_JWT_SECRET) as JwtPayload;
-        req.email = decoded.sub;
+        req.userId = decoded.sub;
 
         next();
     } catch (error) {

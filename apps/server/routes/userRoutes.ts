@@ -9,6 +9,7 @@ import {
 } from "../config";
 import transporter from "../mail/transporter";
 import authMiddleware from "../middleware/authMiddleware";
+import { DecimalsMap } from "@repo/common";
 
 const userRouter = Router();
 
@@ -112,7 +113,7 @@ userRouter.post("/signin", async (req, res) => {
         to: email,
         html: `
               <a href='${BACKEND_URL}/api/v1/signin/post?token=${token}'>
-              Click to Go to dashboard
+                Click to Go to dashboard
               <a>
           `,
       });
@@ -155,10 +156,12 @@ userRouter.get("/signin/post", async (req, res) => {
 
     const authToken = jwt.sign(
       {
-        sub: isUserExists.email,
+        sub: isUserExists.id,
       },
       AUTH_JWT_SECRET
     );
+
+    console.log(authToken);
 
     res.cookie(`authToken`, authToken, {
       httpOnly: true,
@@ -177,8 +180,37 @@ userRouter.get("/signin/post", async (req, res) => {
   }
 });
 
-userRouter.get("/balance", authMiddleware, async (req, res) => {});
+userRouter.get("/balance/usd", authMiddleware, async (req, res) => {
+  try {
+    const userId = req.userId!;
 
-userRouter.get("/balance/usd", authMiddleware, async (req, res) => {});
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+    });
+
+    if (!user) {
+      res.status(400).json({
+        message: "User not found!",
+      });
+      return;
+    }
+
+    const usdtDecmials = DecimalsMap["USDT"]!;
+
+    const userBalance = user.usdBalance / 10 ** usdtDecmials;
+
+    res.status(200).json({
+      usdBalance: userBalance,
+    });
+  } catch (error) {
+    res.status(500).json({
+      message: "Internal Server Error",
+    });
+  }
+});
+
+// userRouter.get("/balance", authMiddleware, async (req, res) => {});
 
 export default userRouter;
