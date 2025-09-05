@@ -1,0 +1,56 @@
+interface IBaseEvent {
+  id: string;
+  streamId: string;
+}
+
+interface IPlaceOrderEvent extends IBaseEvent {
+  event: "PLACE_ORDER";
+  data: {
+    id : string;
+    asset: string;
+    userId: string;
+    type: "LONG" | "SHORT";
+    margin: number;
+    leverage: number;
+    slippage: number;
+  };
+}
+
+interface ICancelOrderEvent extends IBaseEvent {
+  event: "CANCEL_ORDER";
+  data: {
+    orderId : string
+    userId: string;
+  };
+}
+
+interface IPriceUpdateEvent extends IBaseEvent {
+  event: "PRICE_UPDATE";
+  data: Record<
+    string,
+    {
+      decimal: number;
+      price: number;
+    }
+  >;
+}
+
+interface IOrder {
+  id : string;
+  userId : string;
+  asset : string;
+  margin : number;
+  leverage : number;
+  slippage : number;
+  type : "LONG" | "SHORT",
+}
+
+export interface IPriceData {
+  price: number;
+  decimal: number;
+}
+
+export type IEventData =
+  | IPlaceOrderEvent
+  | ICancelOrderEvent
+  | IPriceUpdateEvent;

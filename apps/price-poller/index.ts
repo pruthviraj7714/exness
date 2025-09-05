@@ -1,19 +1,12 @@
 import redisclient from "@repo/redisclient";
-
-const publisher = redisclient.duplicate();
+import { DecimalsMap } from "@repo/common";
+import { ENGINE_STREAM } from "./config";
 
 interface IPriceData {
   asset: string;
   price: number;
   decimal: number;
 }
-
-const DecimalsMap: Record<string, number> = {
-  USDC: 2,
-  SOL: 6,
-  BTC: 4,
-  ETH : 2
-};
 
 const marketFeed: Record<string, IPriceData> = {};
 
@@ -48,12 +41,24 @@ async function main() {
       decimal: symbolDecimals,
       asset,
     };
-
-    setInterval(async () => {
-        await publisher.publish("PRICE_UPDATES", JSON.stringify(marketFeed));
-        console.log('published:', marketFeed);
-    }, 100);
   };
 }
+
+setInterval(async () => {
+  const priceUpdateToEngin = {
+    event: "PRICE_UPDATE",
+    data: marketFeed,
+  };
+  await redisclient.xadd(
+    ENGINE_STREAM,
+    "MAXLEN",
+    "~",
+    1000,
+    "*",
+    "data",
+    JSON.stringify(priceUpdateToEngin),
+  );
+  console.log("sent to stream:", marketFeed);
+}, 100);
 
 main();
