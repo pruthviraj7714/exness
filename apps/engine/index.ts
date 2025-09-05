@@ -5,6 +5,7 @@ import {
   GROUP_NAME,
   RESULTS_STREAM,
 } from "./config";
+import fs from "fs";
 import type { IEventData, IOrder, IPriceData } from "./types/types";
 
 const prices: Record<string, IPriceData> = {};
@@ -45,6 +46,17 @@ const createConsumerGroup = async () => {
   }
 };
 
+const saveSnapshot = () => {
+  const currState = {
+    timestamp: Date.now(),
+    openOrders: openOrders,
+    balances: balances,
+    price: prices,
+  };
+
+  fs.appendFileSync("./snapshot.json", JSON.stringify(currState) + "\n");
+};
+
 const processPlaceOrder = async (event: IEventData) => {
   try {
     if (event.event === "PLACE_ORDER") {
@@ -71,7 +83,7 @@ const processPlaceOrder = async (event: IEventData) => {
       );
 
       console.log(balances);
-console.log(openOrders);
+      console.log(openOrders);
     }
   } catch (error) {
     console.error(
@@ -165,3 +177,5 @@ async function main() {
 }
 
 main();
+
+setInterval(saveSnapshot, 5000);
