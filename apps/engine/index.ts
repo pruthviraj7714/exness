@@ -75,14 +75,15 @@ const autoCloseOrder = async (order: IOrder) => {
   let finalOrderData = {
     ...order,
     closePrice: currentPrice,
-    event : "ORDER_CLOSED",
-    closedAt : Date.now(),
+    event: "ORDER_CLOSED",
+    closedAt: Date.now(),
     pnl,
   };
 
   console.log(finalOrderData);
 
-  openOrders[order.userId] = openOrders[order.userId]?.filter((odr) => odr.id !== order.id) || [];
+  openOrders[order.userId] =
+    openOrders[order.userId]?.filter((odr) => odr.id !== order.id) || [];
   balances[order.userId] = (balances[order.userId] || 0) + order.pnl;
 
   await redisclient.xack(ENGINE_STREAM, GROUP_NAME, order.streamId);
@@ -114,6 +115,7 @@ const handleCalculatePNL = async (order: IOrder, currentPrices: IPriceData) => {
 
   if (equity <= order.margin * 0.1) {
     console.log("Order is closing due to low margin (liquidation)");
+
     await autoCloseOrder(order);
   }
 };
@@ -136,17 +138,51 @@ const processPlaceOrder = async (event: IEventData) => {
 
       openOrders[userId] = openOrders[userId] || [];
 
-      const openPrice =
+      const refPrice =
         type === "LONG"
           ? prices[asset]?.ask! / 10 ** prices[asset]?.decimal!
           : prices[asset]?.bid! / 10 ** prices[asset]?.decimal!;
 
-      if (!openPrice) {
+      if (!refPrice) {
         console.log("open price not found!");
         return;
       }
 
-      const quantity = (margin * leverage) / openPrice;
+      const tolerence = slippage / 100;
+      let minAcceptable: number, maxAcceptable: number;
+
+      if (type === "LONG") {
+        minAcceptable = refPrice;
+        maxAcceptable = refPrice * (1 + tolerence);
+      } else {
+        minAcceptable = refPrice;
+        maxAcceptable = refPrice * (1 - tolerence);
+      }
+
+      const executionPrice =
+        type === "LONG"
+          ? prices[asset]?.ask! / 10 ** prices[asset]?.decimal!
+          : prices[asset]?.bid! / 10 ** prices[asset]?.decimal!;
+
+      if (executionPrice < minAcceptable || executionPrice > maxAcceptable) {
+        console.log("Slippage is too high order can't proceed");
+        let errorData = {
+          type: "ERROR",
+          errorStatus: 422,
+          errorMessage: `Slippage too high. Order rejected.`,
+          orderId: event.data.id,
+        };
+        await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
+        await redisclient.xadd(
+          RESULTS_STREAM,
+          "*",
+          "data",
+          JSON.stringify(errorData)
+        );
+        return;
+      }
+
+      const quantity = (margin * leverage) / executionPrice;
 
       let orderData: IOrder = {
         id: id,
@@ -156,11 +192,11 @@ const processPlaceOrder = async (event: IEventData) => {
         slippage: slippage,
         type: type,
         userId: userId,
-        event : "ORDER_PLACED",
-        openPrice,
+        event: "ORDER_PLACED",
+        openPrice: executionPrice,
         qty: quantity,
         streamId: event.streamId,
-        opendAt : Date.now()
+        opendAt: Date.now(),
       };
 
       openOrders[event.data.userId]!.push(orderData);
@@ -190,6 +226,19 @@ const processCancelOrder = async (event: IEventData) => {
 
       if (!order) {
         console.log("order not found!");
+        let errorData = {
+          type: "ERROR",
+          errorStatus: 400,
+          errorMessage: `Order with orderId ${orderId} not found!`,
+          orderId: orderId,
+        };
+        await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
+        await redisclient.xadd(
+          RESULTS_STREAM,
+          "*",
+          "data",
+          JSON.stringify(errorData)
+        );
         return;
       }
 
@@ -209,15 +258,16 @@ const processCancelOrder = async (event: IEventData) => {
 
       let finalOrderData = {
         ...order,
-        event : "ORDER_CLOSED",
-        closedAt : Date.now(),
+        event: "ORDER_CLOSED",
+        closedAt: Date.now(),
         closePrice: currentPrice,
         pnl,
       };
 
       console.log(finalOrderData);
 
-      openOrders[userId] = openOrders[userId]?.filter((order) => order.id !== orderId) || [];
+      openOrders[userId] =
+        openOrders[userId]?.filter((order) => order.id !== orderId) || [];
       balances[order.userId] = (balances[order.userId] || 0) + order.pnl;
 
       await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
@@ -258,8 +308,6 @@ const processEvents = (events: IEventData[]) => {
           );
         }
         handlePriceUpdate(prices);
-        console.log(openOrders);
-        
         await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
         break;
       }

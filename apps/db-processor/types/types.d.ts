@@ -4,7 +4,7 @@ interface BaseOrderEvent {
     leverage: number;
     margin: number;
     slippage: number;
-    type: "LONG" | "SHORT";
+    type: "LONG" | "SHORT" | "ERROR";
     userId: string;
     qty: number;
     streamId: string;

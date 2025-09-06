@@ -37,23 +37,25 @@ function parseStreamData(streams: any[]) {
 
 const handleInsertPlacedOrder = async (event: IPlaceOrderEvent) => {
   try {
-    await prisma.position.create({
-      data: {
-        id: event.id,
-        asset: event.asset,
-        margin: event.margin,
-        leverage: event.leverage,
-        openPrice: event.openPrice,
-        qty: event.qty,
-        slippage: event.slippage,
-        type: event.type,
-        userId: event.userId,
-        openedAt: new Date(event.opendAt),
-      },
-    });
-    console.log(
-      "Order with orderId " + event.id + " successfully inserted into db"
-    );
+    if (event.type !== "ERROR") {
+      await prisma.position.create({
+        data: {
+          id: event.id,
+          asset: event.asset,
+          margin: event.margin,
+          leverage: event.leverage,
+          openPrice: event.openPrice,
+          qty: event.qty,
+          slippage: event.slippage,
+          type: event.type,
+          userId: event.userId,
+          openedAt: new Date(event.opendAt),
+        },
+      });
+      console.log(
+        "Order with orderId " + event.id + " successfully inserted into db"
+      );
+    }
   } catch (error) {
     console.error("Error while inserting in db: ", error);
   }
@@ -61,21 +63,23 @@ const handleInsertPlacedOrder = async (event: IPlaceOrderEvent) => {
 
 const handleInsertClosedOrder = async (event: ICloseOrderEvent) => {
   try {
-    await prisma.position.update({
-      where: {
-        id: event.id,
-      },
-      data: {
-        userId: event.userId,
-        closedAt: new Date(event.closedAt),
-        pnl: event.pnl,
-        closePrice: event.closePrice,
-        status: "CLOSE",
-      },
-    });
-    console.log(
-      "Order with orderId " + event.id + " successfully inserted into db"
-    );
+    if (event.type !== "ERROR") {
+      await prisma.position.update({
+        where: {
+          id: event.id,
+        },
+        data: {
+          userId: event.userId,
+          closedAt: new Date(event.closedAt),
+          pnl: event.pnl,
+          closePrice: event.closePrice,
+          status: "CLOSE",
+        },
+      });
+      console.log(
+        "Order with orderId " + event.id + " successfully inserted into db"
+      );
+    }
   } catch (error) {
     console.error("Error while inserting in db: ", error);
   }

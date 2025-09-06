@@ -102,6 +102,13 @@ tradeRouter.post("/create", authMiddleware, async (req, res) => {
       return;
     }
 
+    if(result.type === "ERROR") {
+      res.status(result.errorStatus).json({
+        message : result.errorMessager
+      });
+      return;
+    }
+
     res.status(200).json({
       message: "Order successfully Placed",
       result,
@@ -134,6 +141,13 @@ tradeRouter.post("/close/:orderId", authMiddleware, async (req, res) => {
     if (!result) {
       res.status(400).json({
         message: "Engine timeout",
+      });
+      return;
+    }
+
+    if(result.type === "ERROR") {
+      res.status(result.errorStatus).json({
+        message : result.errorMessage
       });
       return;
     }
