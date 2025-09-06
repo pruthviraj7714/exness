@@ -9,7 +9,13 @@ import prisma from "@repo/db";
 
 const createConsumerGroup = async () => {
   try {
-    await redisclient.xgroup("CREATE", RESULTS_STREAM, GROUP_NAME, "$");
+    await redisclient.xgroup(
+      "CREATE",
+      RESULTS_STREAM,
+      GROUP_NAME,
+      "$",
+      "MKSTREAM"
+    );
   } catch (error: any) {
     if (error.message.includes("BUSYGROUP")) {
       console.log(`Group with ${GROUP_NAME} already exists`);
@@ -38,20 +44,37 @@ function parseStreamData(streams: any[]) {
 const handleInsertPlacedOrder = async (event: IPlaceOrderEvent) => {
   try {
     if (event.type !== "ERROR") {
-      await prisma.position.create({
-        data: {
-          id: event.id,
-          asset: event.asset,
-          margin: event.margin,
-          leverage: event.leverage,
-          openPrice: event.openPrice,
-          qty: event.qty,
-          slippage: event.slippage,
-          type: event.type,
-          userId: event.userId,
-          openedAt: new Date(event.opendAt),
-        },
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: {
+            id: event.userId,
+          },
+          data: {
+            usdBalance: {
+              decrement: event.margin,
+            },
+            lockedBalance: {
+              increment: event.margin,
+            },
+          },
+        });
+        if (event.type === "ERROR") return;
+        await tx.position.create({
+          data: {
+            id: event.id,
+            asset: event.asset,
+            margin: event.margin,
+            leverage: event.leverage,
+            openPrice: event.openPrice,
+            qty: event.qty,
+            slippage: event.slippage,
+            type: event.type,
+            userId: event.userId,
+            openedAt: new Date(event.opendAt),
+          },
+        });
       });
+      await redisclient.xack(RESULTS_STREAM, GROUP_NAME, event.streamId);
       console.log(
         "Order with orderId " + event.id + " successfully inserted into db"
       );
@@ -64,18 +87,29 @@ const handleInsertPlacedOrder = async (event: IPlaceOrderEvent) => {
 const handleInsertClosedOrder = async (event: ICloseOrderEvent) => {
   try {
     if (event.type !== "ERROR") {
-      await prisma.position.update({
-        where: {
-          id: event.id,
-        },
-        data: {
-          userId: event.userId,
-          closedAt: new Date(event.closedAt),
-          pnl: event.pnl,
-          closePrice: event.closePrice,
-          status: "CLOSE",
-        },
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: {
+            id: event.userId,
+          },
+          data: {
+            usdBalance: event.finalBalance,
+          },
+        });
+        await tx.position.update({
+          where: {
+            id: event.id,
+          },
+          data: {
+            userId: event.userId,
+            closedAt: new Date(event.closedAt),
+            pnl: event.pnl,
+            closePrice: event.closePrice,
+            status: "CLOSE",
+          },
+        });
       });
+      await redisclient.xack(RESULTS_STREAM, GROUP_NAME, event.streamId);
       console.log(
         "Order with orderId " + event.id + " successfully inserted into db"
       );

@@ -21,6 +21,7 @@ interface BaseOrderEvent {
     closePrice: number;
     closedAt: number;
     pnl: number;
+    finalBalance : number;
   }
   
   export type OrderEvent = IPlaceOrderEvent | ICloseOrderEvent;

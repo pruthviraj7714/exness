@@ -12,5 +12,6 @@ export const DecimalsMap: Record<string, number> = {
     USDC: 2,
     SOL: 6,
     BTC: 4,
-    ETH : 2
+    ETH : 2,
+    USDT : 2
   };

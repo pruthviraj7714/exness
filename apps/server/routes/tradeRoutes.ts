@@ -2,7 +2,7 @@ import { Router } from "express";
 import authMiddleware from "../middleware/authMiddleware";
 import { OrderSchema } from "@repo/common";
 import redisclient from "@repo/redisclient";
-import { ENGINE_STREAM, GROUP_NAME, RESULTS_STREAM } from "../config";
+import { CONSUMER_NAME, ENGINE_STREAM, GROUP_NAME, RESULTS_STREAM } from "../config";
 
 const tradeRouter = Router();
 
@@ -30,16 +30,20 @@ const waitForResults = async (
     let isResolved = false;
 
     const check = async () => {
-      const msgs = await redisclient.xread(
+      const msgs = await redisclient.xreadgroup(
+        "GROUP",
+        GROUP_NAME,
+        CONSUMER_NAME,
         "BLOCK",
         1000,
         "STREAMS",
         RESULTS_STREAM,
-        "0"
+        ">"
       );
 
       if (msgs && msgs.length > 0) {
         const results = parseStreamData(msgs);
+        console.log(results);
         const isResult = results.find((res) => res.id === orderId);
         if (isResult) {
           resolve(isResult);
@@ -100,11 +104,11 @@ tradeRouter.post("/create", authMiddleware, async (req, res) => {
         message: "Engine timeout",
       });
       return;
-    }
+    } 
 
     if(result.type === "ERROR") {
       res.status(result.errorStatus).json({
-        message : result.errorMessager
+        message : result.errorMessage
       });
       return;
     }
@@ -154,6 +158,7 @@ tradeRouter.post("/close/:orderId", authMiddleware, async (req, res) => {
 
     res.status(200).json({
       message: "Order Cancelled successfully",
+      result
     });
   } catch (error) {
     res.status(500).json({

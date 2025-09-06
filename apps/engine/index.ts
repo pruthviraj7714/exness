@@ -7,6 +7,7 @@ import {
 } from "./config";
 import fs from "fs";
 import type { IEventData, IOrder, IPriceData } from "./types/types";
+import { DecimalsMap } from "@repo/common";
 
 const prices: Record<string, IPriceData> = {};
 const balances: Record<string, number> = {};
@@ -34,7 +35,7 @@ const createConsumerGroup = async () => {
       "CREATE",
       ENGINE_STREAM,
       GROUP_NAME,
-      "0",
+      "$",
       "MKSTREAM"
     );
   } catch (error: any) {
@@ -59,6 +60,9 @@ const saveSnapshot = () => {
 
 const autoCloseOrder = async (order: IOrder) => {
   const assetPrice = prices[order.asset]!;
+  const usdtDecimals = DecimalsMap["USDT"]!;
+
+  const openPrice = order.openPrice / 10 ** assetPrice.decimal;
 
   let currentPrice =
     order.type === "LONG"
@@ -67,17 +71,17 @@ const autoCloseOrder = async (order: IOrder) => {
 
   const pnl =
     order.type === "LONG"
-      ? (currentPrice - order.openPrice) * order.qty!
-      : (order.openPrice - currentPrice) * order.qty!;
+      ? (currentPrice - openPrice) * order.qty!
+      : (openPrice - currentPrice) * order.qty!;
 
-  order.pnl = pnl;
+  order.pnl = pnl * 10 ** usdtDecimals;
 
   let finalOrderData = {
     ...order,
     closePrice: currentPrice,
     event: "ORDER_CLOSED",
     closedAt: Date.now(),
-    pnl,
+    finalBalance : balances[order.userId]! * 10 ** usdtDecimals
   };
 
   console.log(finalOrderData);
@@ -98,7 +102,8 @@ const autoCloseOrder = async (order: IOrder) => {
 const handleCalculatePNL = async (order: IOrder, currentPrices: IPriceData) => {
   let pnl: number;
 
-  let openPrice = order.openPrice;
+  let openPrice = order.openPrice / 10 ** currentPrices.decimal;
+
   let currentPrice =
     order.type === "LONG"
       ? currentPrices.bid / 10 ** currentPrices.decimal
@@ -109,11 +114,13 @@ const handleCalculatePNL = async (order: IOrder, currentPrices: IPriceData) => {
       ? (currentPrice - openPrice) * order.qty!
       : (openPrice - currentPrice) * order.qty!;
 
-  order.pnl = pnl;
+      const usdtDecimals = DecimalsMap["USDT"]!;
 
-  const equity = order.margin + pnl;
+  const orderMargin = order.margin / 10 ** usdtDecimals
 
-  if (equity <= order.margin * 0.1) {
+  const equity = orderMargin + pnl;
+
+  if (equity <= orderMargin * 0.1) {
     console.log("Order is closing due to low margin (liquidation)");
 
     await autoCloseOrder(order);
@@ -135,6 +142,25 @@ const processPlaceOrder = async (event: IEventData) => {
       const { asset, leverage, id, margin, slippage, type, userId } =
         event.data;
       balances[userId] = balances[userId] || 5000;
+
+      if(balances[userId] < margin) {
+        console.log("Insufficient Balance");
+        let errorData = {
+          type: "ERROR",
+          errorStatus: 403,
+          streamId : event.streamId,
+          errorMessage: `Your balance is too low to place this order.`,
+          id: event.data.id,
+        };
+        await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
+        await redisclient.xadd(
+          RESULTS_STREAM,
+          "*",
+          "data",
+          JSON.stringify(errorData)
+        );
+        return;
+      }
 
       openOrders[userId] = openOrders[userId] || [];
 
@@ -169,8 +195,9 @@ const processPlaceOrder = async (event: IEventData) => {
         let errorData = {
           type: "ERROR",
           errorStatus: 422,
+          streamId : event.streamId,
           errorMessage: `Slippage too high. Order rejected.`,
-          orderId: event.data.id,
+          id: event.data.id,
         };
         await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
         await redisclient.xadd(
@@ -182,18 +209,21 @@ const processPlaceOrder = async (event: IEventData) => {
         return;
       }
 
+      const usdtDecimals = DecimalsMap["USDT"]!;
+      const symbolDecimals = DecimalsMap[event.data.asset]!;
+
       const quantity = (margin * leverage) / executionPrice;
 
       let orderData: IOrder = {
         id: id,
         asset: asset,
         leverage: leverage,
-        margin: margin,
+        margin: margin * 10 ** usdtDecimals,
         slippage: slippage,
         type: type,
         userId: userId,
         event: "ORDER_PLACED",
-        openPrice: executionPrice,
+        openPrice: executionPrice * 10 ** symbolDecimals,
         qty: quantity,
         streamId: event.streamId,
         opendAt: Date.now(),
@@ -221,6 +251,7 @@ const processCancelOrder = async (event: IEventData) => {
   try {
     if (event.event === "CANCEL_ORDER") {
       const { orderId, userId } = event.data;
+      const usdtDecimals = DecimalsMap["USDT"]!;
 
       const order = openOrders[userId]?.find((order) => order.id === orderId);
 
@@ -229,8 +260,9 @@ const processCancelOrder = async (event: IEventData) => {
         let errorData = {
           type: "ERROR",
           errorStatus: 400,
+          streamId : event.streamId,
           errorMessage: `Order with orderId ${orderId} not found!`,
-          orderId: orderId,
+          id: orderId,
         };
         await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
         await redisclient.xadd(
@@ -241,7 +273,7 @@ const processCancelOrder = async (event: IEventData) => {
         );
         return;
       }
-
+      
       const assetPrice = prices[order.asset]!;
 
       let currentPrice =
@@ -249,26 +281,32 @@ const processCancelOrder = async (event: IEventData) => {
           ? assetPrice.bid / 10 ** assetPrice.decimal
           : assetPrice.ask / 10 ** assetPrice.decimal;
 
+          const openPrice = order.openPrice / 10 ** assetPrice.decimal;
+
       const pnl =
         order.type === "LONG"
-          ? (currentPrice - order.openPrice) * order.qty!
-          : (order.openPrice - currentPrice) * order.qty!;
+          ? (currentPrice - openPrice) * order.qty!
+          : (openPrice - currentPrice) * order.qty!;
 
-      order.pnl = pnl;
+      order.pnl = pnl * 10 ** usdtDecimals;
+
+      const symbolDecimals = DecimalsMap[order.asset]!;
+
+      balances[order.userId] = (balances[order.userId] || 0) + order.pnl;
 
       let finalOrderData = {
         ...order,
         event: "ORDER_CLOSED",
         closedAt: Date.now(),
-        closePrice: currentPrice,
-        pnl,
+        closePrice: currentPrice * 10 ** symbolDecimals,
+        finalBalance : balances[order.userId]! * 10 ** usdtDecimals
       };
 
       console.log(finalOrderData);
 
       openOrders[userId] =
         openOrders[userId]?.filter((order) => order.id !== orderId) || [];
-      balances[order.userId] = (balances[order.userId] || 0) + order.pnl;
+
 
       await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
       await redisclient.xadd(
@@ -308,6 +346,7 @@ const processEvents = (events: IEventData[]) => {
           );
         }
         handlePriceUpdate(prices);
+        console.log(balances);
         await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
         break;
       }
