@@ -4,9 +4,10 @@ import userRouter from "./routes/userRoutes";
 import cookieParser from "cookie-parser";
 import tradeRouter from "./routes/tradeRoutes";
 import assetRouter from "./routes/assetRouer";
-import { GROUP_NAME, RESULTS_STREAM } from "./config";
 import redisclient from "@repo/redisclient";
 import klinesRouter from "./routes/candleRouter";
+import positionsRouter from "./routes/positionsRouter";
+import { GROUP_NAME, RESULTS_STREAM } from "./config";
 
 const app = express();
 
@@ -36,6 +37,7 @@ app.use("/api/v1/user", userRouter);
 app.use("/api/v1/trade", tradeRouter);
 app.use("/api/v1/asset", assetRouter);
 app.use("/api/v1/klines", klinesRouter);
+app.use("/api/v1/positions", positionsRouter);
 
 createConsumerGroup();
 
