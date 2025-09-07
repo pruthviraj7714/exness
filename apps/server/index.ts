@@ -6,6 +6,7 @@ import tradeRouter from "./routes/tradeRoutes";
 import assetRouter from "./routes/assetRouer";
 import { GROUP_NAME, RESULTS_STREAM } from "./config";
 import redisclient from "@repo/redisclient";
+import klinesRouter from "./routes/candleRouter";
 
 const app = express();
 
@@ -34,6 +35,7 @@ const createConsumerGroup = async () => {
 app.use("/api/v1/user", userRouter);
 app.use("/api/v1/trade", tradeRouter);
 app.use("/api/v1/asset", assetRouter);
+app.use("/api/v1/klines", klinesRouter);
 
 createConsumerGroup();
 

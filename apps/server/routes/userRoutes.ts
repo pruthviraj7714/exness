@@ -180,6 +180,23 @@ userRouter.get("/signin/post", async (req, res) => {
   }
 });
 
+userRouter.post("/signout", async (req, res) => {
+  try {
+    res.clearCookie("authToken", {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/", 
+    });
+
+    res.redirect(FRONTEND_URL);
+  } catch (error) {
+    res.status(500).json({
+      message: "Internal Server Error",
+    });
+  }
+});
+
 userRouter.get("/balance/usd", authMiddleware, async (req, res) => {
   try {
     const userId = req.userId!;
@@ -210,7 +227,5 @@ userRouter.get("/balance/usd", authMiddleware, async (req, res) => {
     });
   }
 });
-
-// userRouter.get("/balance", authMiddleware, async (req, res) => {});
 
 export default userRouter;
