@@ -1,5 +1,5 @@
 import request from "supertest";
-import { expect, test, describe, beforeEach } from "bun:test";
+import { expect, test, describe, beforeAll } from "bun:test";
 import prisma from "@repo/db";
 import jwt from "jsonwebtoken";
 import { BACKEND_URL, EMAIL_JWT_SECRET } from "./config";
@@ -58,11 +58,12 @@ const placeRandomOrder = async (cookie: string): Promise<string> => {
   return res.body.result.id;
 };
 
+beforeAll(async () => {
+  await prisma.position.deleteMany();
+  await prisma.user.deleteMany();
+});
+
 describe("User Endpoints", () => {
-  beforeEach(async () => {
-    await prisma.position.deleteMany();
-    await prisma.user.deleteMany();
-  });
   test("user signup - should fail if email not given", async () => {
     const res = await request(BACKEND_URL).post(`/api/v1/user/signup`).send({});
     expect(res.status).toBe(400);
@@ -117,11 +118,6 @@ describe("User Endpoints", () => {
 });
 
 describe("Trade Endpoints", () => {
-  beforeEach(async () => {
-    await prisma.position.deleteMany();
-    await prisma.user.deleteMany();
-  });
-
   test("Trade create - should fail if no cookie passed", async () => {
     const res = await request(BACKEND_URL)
       .post(`/api/v1/trade/create`)
@@ -195,5 +191,44 @@ describe("Trade Endpoints", () => {
       .post(`/api/v1/trade/close/${orderId}`)
       .set("Cookie", cookie);
     expect(res.status).toBe(200);
+  });
+});
+
+describe("Positions Endpoints", () => {
+  test("fetch open positions - should fail if no cookie passed", async () => {
+    const res = await request(BACKEND_URL).get(`/api/v1/positions/open`);
+    expect(res.status).toBe(401);
+  });
+  test("fetch open positions - should fail if wrong cookie passed", async () => {
+    const res = await request(BACKEND_URL)
+      .get(`/api/v1/positions/open`)
+      .set("Cookie", "rafn232");
+    expect(res.status).toBe(401);
+  });
+  test("fetch open positions - should succeed if right cookie given", async () => {
+    const cookie = await generateRandomUserAndReturnCookie();
+    const res = await request(BACKEND_URL)
+      .get(`/api/v1/positions/open`)
+      .set("Cookie", cookie);
+    expect(res.status).toBe(200);
+    expect(res.body).toBeArray();
+  });
+  test("fetch closed positions - should fail if no cookie passed", async () => {
+    const res = await request(BACKEND_URL).get(`/api/v1/positions/closed`);
+    expect(res.status).toBe(401);
+  });
+  test("fetch closed positions - should fail if wrong cookie passed", async () => {
+    const res = await request(BACKEND_URL)
+      .get(`/api/v1/positions/closed`)
+      .set("Cookie", "rafn232");
+    expect(res.status).toBe(401);
+  });
+  test("fetch closed positions - should succeed if right cookie given", async () => {
+    const cookie = await generateRandomUserAndReturnCookie();
+    const res = await request(BACKEND_URL)
+      .get(`/api/v1/positions/closed`)
+      .set("Cookie", cookie);
+    expect(res.status).toBe(200);
+    expect(res.body).toBeArray();
   });
 });
