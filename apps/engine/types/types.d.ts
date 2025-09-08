@@ -3,6 +3,11 @@ interface IBaseEvent {
   streamId: string;
 }
 
+interface UserBalanceWallet {
+  usedMargin : number;
+  freeMargin : number;
+}
+
 interface IPlaceOrderEvent extends IBaseEvent {
   event: "PLACE_ORDER";
   data: {
@@ -48,7 +53,7 @@ interface IOrder {
   openPrice : number;
   pnl? : number;
   qty?: number;
-  opendAt? : number;
+  openedAt? : number;
   closedAt? : number;
   streamId: string;
 }

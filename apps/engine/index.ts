@@ -6,11 +6,11 @@ import {
   RESULTS_STREAM,
 } from "./config";
 import fs from "fs";
-import type { IEventData, IOrder, IPriceData } from "./types/types";
+import type { IEventData, IOrder, IPriceData, UserBalanceWallet } from "./types/types";
 import { DecimalsMap } from "@repo/common";
 
 const prices: Record<string, IPriceData> = {};
-const balances: Record<string, number> = {};
+const balances: Record<string, UserBalanceWallet> = {};
 const openOrders: Record<string, IOrder[]> = {};
 
 function parseStreamData(streams: any[]) {
@@ -55,12 +55,17 @@ const saveSnapshot = () => {
     price: prices,
   };
 
-  fs.appendFileSync("./snapshot.json", JSON.stringify(currState) + "\n");
+  fs.writeFile("./snapshot.json", JSON.stringify(currState) + "\n", (err) => {
+    if (err) {
+      console.error(err.message);
+    }
+  });
 };
 
 const autoCloseOrder = async (order: IOrder) => {
   const assetPrice = prices[order.asset]!;
   const usdtDecimals = DecimalsMap["USDT"]!;
+  const { userId } = order;
 
   const openPrice = order.openPrice / 10 ** assetPrice.decimal;
 
@@ -76,19 +81,30 @@ const autoCloseOrder = async (order: IOrder) => {
 
   order.pnl = pnl * 10 ** usdtDecimals;
 
+  if(!balances[userId])  {
+    balances[userId] = {
+      freeMargin : 5000,
+      usedMargin : 0
+    }
+  }
+
+  const marginFloat = order.margin / 10 ** usdtDecimals;
+
+  balances[userId].usedMargin -= marginFloat;
+  balances[userId].freeMargin += marginFloat + pnl
+
   let finalOrderData = {
     ...order,
     closePrice: currentPrice,
     event: "ORDER_CLOSED",
     closedAt: Date.now(),
-    finalBalance : balances[order.userId]! * 10 ** usdtDecimals
+    finalBalance: balances[userId].freeMargin * 10 ** usdtDecimals,
   };
 
   console.log(finalOrderData);
 
   openOrders[order.userId] =
-    openOrders[order.userId]?.filter((odr) => odr.id !== order.id) || [];
-  balances[order.userId] = (balances[order.userId] || 0) + order.pnl;
+    (openOrders[order.userId] || []).filter((odr) => odr.id !== order.id);
 
   await redisclient.xack(ENGINE_STREAM, GROUP_NAME, order.streamId);
   await redisclient.xadd(
@@ -114,9 +130,9 @@ const handleCalculatePNL = async (order: IOrder, currentPrices: IPriceData) => {
       ? (currentPrice - openPrice) * order.qty!
       : (openPrice - currentPrice) * order.qty!;
 
-      const usdtDecimals = DecimalsMap["USDT"]!;
+  const usdtDecimals = DecimalsMap["USDT"]!;
 
-  const orderMargin = order.margin / 10 ** usdtDecimals
+  const orderMargin = order.margin / 10 ** usdtDecimals;
 
   const equity = orderMargin + pnl;
 
@@ -127,13 +143,16 @@ const handleCalculatePNL = async (order: IOrder, currentPrices: IPriceData) => {
   }
 };
 
-const handlePriceUpdate = (latestPrices: Record<string, IPriceData>) => {
-  Object.keys(openOrders).forEach((userId) => {
-    openOrders[userId]?.forEach(
-      async (order) =>
-        await handleCalculatePNL(order, latestPrices[order.asset]!)
-    );
-  });
+const handlePriceUpdate = async (latestPrices: Record<string, IPriceData>) => {
+  const pnlPromises = [];
+
+  for (const user in openOrders) {
+    for (const order of openOrders[user]!) {
+      pnlPromises.push(handleCalculatePNL(order, latestPrices[order.asset]!));
+    }
+  }
+
+  await Promise.allSettled(pnlPromises);
 };
 
 const processPlaceOrder = async (event: IEventData) => {
@@ -141,14 +160,37 @@ const processPlaceOrder = async (event: IEventData) => {
     if (event.event === "PLACE_ORDER") {
       const { asset, leverage, id, margin, slippage, type, userId } =
         event.data;
-      balances[userId] = balances[userId] || 5000;
 
-      if(balances[userId] < margin) {
+      balances[userId] = balances[userId] || {
+        freeMargin : 5000,
+        usedMargin : 0
+      }
+
+      if (!prices[asset]) {
+        console.log(`No price data available for ${asset}. Order rejected.`);
+        let errorData = {
+          type: "ERROR",
+          errorStatus: 503,
+          streamId: event.streamId,
+          errorMessage: `Price not available for ${asset}. Please try again later.`,
+          id,
+        };
+        await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
+        await redisclient.xadd(
+          RESULTS_STREAM,
+          "*",
+          "data",
+          JSON.stringify(errorData)
+        );
+        return;
+      }
+
+      if (balances[userId].freeMargin < margin) {
         console.log("Insufficient Balance");
         let errorData = {
           type: "ERROR",
           errorStatus: 403,
-          streamId : event.streamId,
+          streamId: event.streamId,
           errorMessage: `Your balance is too low to place this order.`,
           id: event.data.id,
         };
@@ -166,8 +208,8 @@ const processPlaceOrder = async (event: IEventData) => {
 
       const refPrice =
         type === "LONG"
-          ? prices[asset]?.ask! / 10 ** prices[asset]?.decimal!
-          : prices[asset]?.bid! / 10 ** prices[asset]?.decimal!;
+          ? prices[asset].ask / 10 ** prices[asset].decimal
+          : prices[asset].bid / 10 ** prices[asset]?.decimal;
 
       if (!refPrice) {
         console.log("open price not found!");
@@ -181,21 +223,21 @@ const processPlaceOrder = async (event: IEventData) => {
         minAcceptable = refPrice;
         maxAcceptable = refPrice * (1 + tolerence);
       } else {
-        minAcceptable = refPrice;
-        maxAcceptable = refPrice * (1 - tolerence);
+        maxAcceptable = refPrice;
+        minAcceptable = refPrice * (1 - tolerence);
       }
 
       const executionPrice =
         type === "LONG"
-          ? prices[asset]?.ask! / 10 ** prices[asset]?.decimal!
-          : prices[asset]?.bid! / 10 ** prices[asset]?.decimal!;
+          ? prices[asset].ask / 10 ** prices[asset].decimal
+          : prices[asset].bid / 10 ** prices[asset].decimal;
 
       if (executionPrice < minAcceptable || executionPrice > maxAcceptable) {
         console.log("Slippage is too high order can't proceed");
         let errorData = {
           type: "ERROR",
           errorStatus: 422,
-          streamId : event.streamId,
+          streamId: event.streamId,
           errorMessage: `Slippage too high. Order rejected.`,
           id: event.data.id,
         };
@@ -214,6 +256,9 @@ const processPlaceOrder = async (event: IEventData) => {
 
       const quantity = (margin * leverage) / executionPrice;
 
+      balances[userId].freeMargin -= margin;
+      balances[userId].usedMargin += margin;
+
       let orderData: IOrder = {
         id: id,
         asset: asset,
@@ -226,10 +271,10 @@ const processPlaceOrder = async (event: IEventData) => {
         openPrice: executionPrice * 10 ** symbolDecimals,
         qty: quantity,
         streamId: event.streamId,
-        opendAt: Date.now(),
+        openedAt: Date.now(),
       };
 
-      openOrders[event.data.userId]!.push(orderData);
+      openOrders[userId].push(orderData);
 
       await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
 
@@ -253,14 +298,14 @@ const processCancelOrder = async (event: IEventData) => {
       const { orderId, userId } = event.data;
       const usdtDecimals = DecimalsMap["USDT"]!;
 
-      const order = openOrders[userId]?.find((order) => order.id === orderId);
+      const order = (openOrders[userId] || []).find((order) => order.id === orderId);
 
       if (!order) {
         console.log("order not found!");
         let errorData = {
           type: "ERROR",
           errorStatus: 400,
-          streamId : event.streamId,
+          streamId: event.streamId,
           errorMessage: `Order with orderId ${orderId} not found!`,
           id: orderId,
         };
@@ -273,7 +318,7 @@ const processCancelOrder = async (event: IEventData) => {
         );
         return;
       }
-      
+
       const assetPrice = prices[order.asset]!;
 
       let currentPrice =
@@ -281,7 +326,7 @@ const processCancelOrder = async (event: IEventData) => {
           ? assetPrice.bid / 10 ** assetPrice.decimal
           : assetPrice.ask / 10 ** assetPrice.decimal;
 
-          const openPrice = order.openPrice / 10 ** assetPrice.decimal;
+      const openPrice = order.openPrice / 10 ** assetPrice.decimal;
 
       const pnl =
         order.type === "LONG"
@@ -292,21 +337,28 @@ const processCancelOrder = async (event: IEventData) => {
 
       const symbolDecimals = DecimalsMap[order.asset]!;
 
-      balances[order.userId] = (balances[order.userId] || 0) + order.pnl;
+      if (!balances[userId]) {
+        balances[userId] = { freeMargin: 5000, usedMargin: 0 };
+      }
+
+      const marginFloat = order.margin / 10 ** usdtDecimals;
+
+      balances[userId].usedMargin -= marginFloat; 
+      balances[userId].freeMargin += marginFloat + pnl; 
 
       let finalOrderData = {
         ...order,
         event: "ORDER_CLOSED",
         closedAt: Date.now(),
         closePrice: currentPrice * 10 ** symbolDecimals,
-        finalBalance : balances[order.userId]! * 10 ** usdtDecimals
+        finalBalance: balances[userId].freeMargin! * 10 ** usdtDecimals,
       };
 
       console.log(finalOrderData);
 
       openOrders[userId] =
-        openOrders[userId]?.filter((order) => order.id !== orderId) || [];
-
+        (openOrders[userId] || []).filter((order) => order.id !== orderId) ||
+        [];
 
       await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
       await redisclient.xadd(
@@ -323,8 +375,8 @@ const processCancelOrder = async (event: IEventData) => {
   }
 };
 
-const processEvents = (events: IEventData[]) => {
-  events.map(async (event) => {
+const processEvents = async (events: IEventData[]) => {
+  for (const event of events) {
     switch (event.event) {
       case "PLACE_ORDER": {
         await processPlaceOrder(event);
@@ -346,7 +398,6 @@ const processEvents = (events: IEventData[]) => {
           );
         }
         handlePriceUpdate(prices);
-        console.log(balances);
         await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
         break;
       }
@@ -354,27 +405,27 @@ const processEvents = (events: IEventData[]) => {
         throw new Error("Unknown eventss");
       }
     }
-  });
+  }
 };
 
 async function main() {
   await createConsumerGroup();
 
-  const prevMessages = await redisclient.xreadgroup(
-    "GROUP",
-    GROUP_NAME,
-    CONSUMER_NAME,
-    "BLOCK",
-    5000,
-    "STREAMS",
-    ENGINE_STREAM,
-    "0"
-  );
+  // const prevMessages = await redisclient.xreadgroup(
+  //   "GROUP",
+  //   GROUP_NAME,
+  //   CONSUMER_NAME,
+  //   "BLOCK",
+  //   5000,
+  //   "STREAMS",
+  //   ENGINE_STREAM,
+  //   "0"
+  // );
 
-  if (prevMessages && prevMessages.length > 0) {
-    const data = parseStreamData(prevMessages);
-    processEvents(data);
-  }
+  // if (prevMessages && prevMessages.length > 0) {
+  //   const data = parseStreamData(prevMessages);
+  //   await processEvents(data);
+  // }
 
   while (true) {
     try {
@@ -391,7 +442,7 @@ async function main() {
 
       if (newMessages && newMessages.length > 0) {
         const data = parseStreamData(newMessages);
-        processEvents(data);
+        await processEvents(data);
       }
     } catch (error) {
       console.error("Error in main loop: ", error);
