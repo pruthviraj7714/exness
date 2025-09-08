@@ -13,7 +13,7 @@ interface BaseOrderEvent {
   export interface IPlaceOrderEvent extends BaseOrderEvent {
     event: "ORDER_PLACED";
     openPrice: number;
-    opendAt: number;
+    openedAt: number;
   }
   
   export interface ICloseOrderEvent extends BaseOrderEvent {

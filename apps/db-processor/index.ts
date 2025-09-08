@@ -53,9 +53,6 @@ const handleInsertPlacedOrder = async (event: IPlaceOrderEvent) => {
             usdBalance: {
               decrement: event.margin,
             },
-            lockedBalance: {
-              increment: event.margin,
-            },
           },
         });
         if (event.type === "ERROR") return;
@@ -70,7 +67,7 @@ const handleInsertPlacedOrder = async (event: IPlaceOrderEvent) => {
             slippage: event.slippage,
             type: event.type,
             userId: event.userId,
-            openedAt: new Date(event.opendAt),
+            openedAt: new Date(event.openedAt),
           },
         });
       });
@@ -119,7 +116,6 @@ const handleInsertClosedOrder = async (event: ICloseOrderEvent) => {
   }
 };
 
-//TODO: Updating user balances is remaining now
 const handleProcessEvents = (events: OrderEvent[]) => {
   events.forEach(async (event) => {
     switch (event.event) {
