@@ -24,7 +24,7 @@ export default async function DashboardPage() {
   return (
     <div className="min-h-screen bg-background">
       <nav className="border-b border-border/40 bg-background/95 backdrop-blur">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex h-16 items-center justify-between">
             <div className="flex items-center space-x-2">
               <TrendingUp className="h-8 w-8 text-primary" />
@@ -47,7 +47,7 @@ export default async function DashboardPage() {
         </div>
       </nav>
 
-      <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="mx-auto px-2 sm:px-2 lg:px-4 py-8">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-foreground">
             Trading Dashboard

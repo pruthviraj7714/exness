@@ -7,11 +7,6 @@ const INSTRUMENTS = [
   { symbol: "BTC", name: "Bitcoin", price: 45234.56, change: 2.34, changePercent: 5.45 },
   { symbol: "ETH", name: "Ethereum", price: 2834.12, change: -45.23, changePercent: -1.57 },
   { symbol: "SOL", name: "Solana", price: 98.45, change: 3.21, changePercent: 3.37 },
-  { symbol: "AAPL", name: "Apple Inc.", price: 178.23, change: 1.45, changePercent: 0.82 },
-  { symbol: "GOOGL", name: "Alphabet Inc.", price: 142.56, change: -2.34, changePercent: -1.62 },
-  { symbol: "TSLA", name: "Tesla Inc.", price: 234.67, change: 8.92, changePercent: 3.95 },
-  { symbol: "NVDA", name: "NVIDIA Corp.", price: 456.78, change: 12.34, changePercent: 2.78 },
-  { symbol: "MSFT", name: "Microsoft Corp.", price: 378.9, change: 4.56, changePercent: 1.22 },
 ]
 
 interface InstrumentListProps {

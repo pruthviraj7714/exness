@@ -85,7 +85,7 @@ export function TradeForm({ instrument }: TradeFormProps) {
             </Button>
           </div>
 
-          <div>
+          <div className="py-2">
             <Label htmlFor="margin">Margin ($)</Label>
             <Input
               id="margin"
@@ -94,6 +94,7 @@ export function TradeForm({ instrument }: TradeFormProps) {
               onChange={(e) => setMargin(e.target.value)}
               placeholder="Enter margin amount"
               min="1"
+              className="mt-5"
               step="0.01"
               required
             />

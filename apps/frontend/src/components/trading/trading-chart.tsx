@@ -40,7 +40,7 @@ export function TradingChart({ instrument }: TradingChartProps) {
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<any>(null);
   const candlestickSeriesRef = useRef<any | null>(null);
-  const [interval, setInterval] = useState<Interval>("1m");
+  const [interval, setTicksInterval] = useState<Interval>("1m");
 
   const fetchChartData = async () => {
     setLoading(true);
@@ -162,6 +162,57 @@ export function TradingChart({ instrument }: TradingChartProps) {
     };
   }, [instrument, interval]);
 
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout;
+  
+    const pollLatestCandle = async () => {
+      try {
+        const endTime = Date.now();
+        const startTime = endTime - 1000 * 60 * 60; // e.g. last 1h for context
+  
+        const response = await axios.get(
+          `/api/v1/klines?asset=${instrument.toUpperCase()}&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=2`
+        );
+  
+        const newData = response.data.map((candle: any) => ({
+          time: Math.floor(candle.openTime / 1000) as UTCTimestamp,
+          open: parseFloat(candle.open),
+          high: parseFloat(candle.high),
+          low: parseFloat(candle.low),
+          close: parseFloat(candle.close),
+        }));
+  
+        if (newData.length > 0) {
+          setCandleData((prev) => {
+            const updated = [...prev];
+            const last = updated[updated.length - 1];
+  
+            // if the last candle is same time, update it
+            if (last && last.time === newData[newData.length - 1].time) {
+              updated[updated.length - 1] = newData[newData.length - 1];
+            } else {
+              // else push new one
+              updated.push(newData[newData.length - 1]);
+            }
+  
+            updatePriceInfo(updated);
+            candlestickSeriesRef.current?.setData(updated);
+            return updated;
+          });
+        }
+      } catch (err) {
+        console.error("Polling error:", err);
+      }
+    };
+  
+    intervalId = setInterval(pollLatestCandle, 3000);
+  
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [instrument, interval]);
+  
+
   const isPositive = priceChange >= 0;
 
   return (
@@ -187,7 +238,7 @@ export function TradingChart({ instrument }: TradingChartProps) {
               key={int}
               variant={interval === int ? "default" : "outline"}
               size="sm"
-              onClick={() => setInterval(int)}
+              onClick={() => setTicksInterval(int)}
               disabled={loading}
             >
               {int}
