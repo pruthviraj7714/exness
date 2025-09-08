@@ -6,12 +6,18 @@ import {
   RESULTS_STREAM,
 } from "./config";
 import fs from "fs";
-import type { IEventData, IOrder, IPriceData, UserBalanceWallet } from "./types/types";
+import type {
+  IEventData,
+  IOrder,
+  IPriceData,
+  UserBalanceWallet,
+} from "./types/types";
 import { DecimalsMap } from "@repo/common";
 
-const prices: Record<string, IPriceData> = {};
-const balances: Record<string, UserBalanceWallet> = {};
-const openOrders: Record<string, IOrder[]> = {};
+let prices: Record<string, IPriceData> = {};
+let balances: Record<string, UserBalanceWallet> = {};
+let openOrders: Record<string, IOrder[]> = {};
+let lastStreamId: string;
 
 function parseStreamData(streams: any[]) {
   const results: any[] = [];
@@ -53,13 +59,31 @@ const saveSnapshot = () => {
     openOrders: openOrders,
     balances: balances,
     price: prices,
+    lastStreamId,
   };
 
-  fs.writeFile("./snapshot.json", JSON.stringify(currState) + "\n", (err) => {
+  fs.writeFile("./snapshot.json", JSON.stringify(currState), (err) => {
     if (err) {
       console.error(err.message);
     }
   });
+};
+
+const restoreSnapshot = () => {
+  try {
+    fs.readFile("./snapshot.json", "utf-8", (err, data) => {
+      if (data) {
+        const rawData = JSON.parse(data);
+        openOrders = rawData.openOrders || {};
+        balances = rawData.balances || {};
+        prices = rawData.price || {};
+        lastStreamId = rawData.lastStreamId || "0";
+        console.log("Snapshot restored at streamId:", lastStreamId);
+      }
+    });
+  } catch (error) {
+    console.error("Error while restoring snapshot: ", error);
+  }
 };
 
 const autoCloseOrder = async (order: IOrder) => {
@@ -81,17 +105,17 @@ const autoCloseOrder = async (order: IOrder) => {
 
   order.pnl = pnl * 10 ** usdtDecimals;
 
-  if(!balances[userId])  {
+  if (!balances[userId]) {
     balances[userId] = {
-      freeMargin : 5000,
-      usedMargin : 0
-    }
+      freeMargin: 5000,
+      usedMargin: 0,
+    };
   }
 
   const marginFloat = order.margin / 10 ** usdtDecimals;
 
   balances[userId].usedMargin -= marginFloat;
-  balances[userId].freeMargin += marginFloat + pnl
+  balances[userId].freeMargin += marginFloat + pnl;
 
   let finalOrderData = {
     ...order,
@@ -103,10 +127,12 @@ const autoCloseOrder = async (order: IOrder) => {
 
   console.log(finalOrderData);
 
-  openOrders[order.userId] =
-    (openOrders[order.userId] || []).filter((odr) => odr.id !== order.id);
+  openOrders[order.userId] = (openOrders[order.userId] || []).filter(
+    (odr) => odr.id !== order.id
+  );
 
   await redisclient.xack(ENGINE_STREAM, GROUP_NAME, order.streamId);
+  lastStreamId = order.streamId;
   await redisclient.xadd(
     RESULTS_STREAM,
     "*",
@@ -162,9 +188,9 @@ const processPlaceOrder = async (event: IEventData) => {
         event.data;
 
       balances[userId] = balances[userId] || {
-        freeMargin : 5000,
-        usedMargin : 0
-      }
+        freeMargin: 5000,
+        usedMargin: 0,
+      };
 
       if (!prices[asset]) {
         console.log(`No price data available for ${asset}. Order rejected.`);
@@ -176,6 +202,7 @@ const processPlaceOrder = async (event: IEventData) => {
           id,
         };
         await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
+        lastStreamId = event.streamId;
         await redisclient.xadd(
           RESULTS_STREAM,
           "*",
@@ -195,6 +222,7 @@ const processPlaceOrder = async (event: IEventData) => {
           id: event.data.id,
         };
         await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
+        lastStreamId = event.streamId;
         await redisclient.xadd(
           RESULTS_STREAM,
           "*",
@@ -242,6 +270,7 @@ const processPlaceOrder = async (event: IEventData) => {
           id: event.data.id,
         };
         await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
+        lastStreamId = event.streamId;
         await redisclient.xadd(
           RESULTS_STREAM,
           "*",
@@ -277,7 +306,7 @@ const processPlaceOrder = async (event: IEventData) => {
       openOrders[userId].push(orderData);
 
       await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
-
+      lastStreamId = event.streamId;
       await redisclient.xadd(
         RESULTS_STREAM,
         "*",
@@ -298,7 +327,9 @@ const processCancelOrder = async (event: IEventData) => {
       const { orderId, userId } = event.data;
       const usdtDecimals = DecimalsMap["USDT"]!;
 
-      const order = (openOrders[userId] || []).find((order) => order.id === orderId);
+      const order = (openOrders[userId] || []).find(
+        (order) => order.id === orderId
+      );
 
       if (!order) {
         console.log("order not found!");
@@ -310,6 +341,7 @@ const processCancelOrder = async (event: IEventData) => {
           id: orderId,
         };
         await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
+        lastStreamId = event.streamId;
         await redisclient.xadd(
           RESULTS_STREAM,
           "*",
@@ -343,8 +375,8 @@ const processCancelOrder = async (event: IEventData) => {
 
       const marginFloat = order.margin / 10 ** usdtDecimals;
 
-      balances[userId].usedMargin -= marginFloat; 
-      balances[userId].freeMargin += marginFloat + pnl; 
+      balances[userId].usedMargin -= marginFloat;
+      balances[userId].freeMargin += marginFloat + pnl;
 
       let finalOrderData = {
         ...order,
@@ -361,6 +393,7 @@ const processCancelOrder = async (event: IEventData) => {
         [];
 
       await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
+      lastStreamId = event.streamId;
       await redisclient.xadd(
         RESULTS_STREAM,
         "*",
@@ -399,6 +432,7 @@ const processEvents = async (events: IEventData[]) => {
         }
         handlePriceUpdate(prices);
         await redisclient.xack(ENGINE_STREAM, GROUP_NAME, event.streamId);
+        lastStreamId = event.streamId;
         break;
       }
       default: {
@@ -409,23 +443,25 @@ const processEvents = async (events: IEventData[]) => {
 };
 
 async function main() {
+  restoreSnapshot();
+  
   await createConsumerGroup();
 
-  // const prevMessages = await redisclient.xreadgroup(
-  //   "GROUP",
-  //   GROUP_NAME,
-  //   CONSUMER_NAME,
-  //   "BLOCK",
-  //   5000,
-  //   "STREAMS",
-  //   ENGINE_STREAM,
-  //   "0"
-  // );
+  const prevMessages = await redisclient.xreadgroup(
+    "GROUP",
+    GROUP_NAME,
+    CONSUMER_NAME,
+    "BLOCK",
+    5000,
+    "STREAMS",
+    ENGINE_STREAM,
+    lastStreamId || "0"
+  );
 
-  // if (prevMessages && prevMessages.length > 0) {
-  //   const data = parseStreamData(prevMessages);
-  //   await processEvents(data);
-  // }
+  if (prevMessages && prevMessages.length > 0) {
+    const data = parseStreamData(prevMessages);
+    await processEvents(data);
+  }
 
   while (true) {
     try {

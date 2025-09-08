@@ -8,6 +8,12 @@ export const OrderSchema = z.object({
     slippage : z.number()
 })
 
+export const SUPPORTED_ASSETS = [
+    "SOL",
+    "ETH",
+    "BTC"
+]
+
 export const DecimalsMap: Record<string, number> = {
     USDC: 2,
     SOL: 6,
