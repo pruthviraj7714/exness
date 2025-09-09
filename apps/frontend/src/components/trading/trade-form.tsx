@@ -10,9 +10,10 @@ import { toast } from "sonner";
 
 interface TradeFormProps {
   instrument: string;
+  onPositionCreated: (position: Omit<Position, 'id' | 'timestamp' | 'status'>) => void;
 }
 
-export function TradeForm({ instrument }: TradeFormProps) {
+export function TradeForm({ instrument, onPositionCreated }: TradeFormProps) {
   const [tradeType, setTradeType] = useState<"LONG" | "SHORT">("LONG");
   const [margin, setMargin] = useState("");
   const [leverage, setLeverage] = useState(1);
