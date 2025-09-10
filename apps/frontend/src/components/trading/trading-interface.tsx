@@ -19,6 +19,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "../ui/badge";
 import PositionRow from "../PositionRow";
 import { DecimalsMap } from "@repo/common";
+import useSocket from "@/hooks/useSocket";
 
 type Candle = {
   time: UTCTimestamp;
@@ -33,18 +34,23 @@ const INTERVALS = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"] as const;
 type Interval = (typeof INTERVALS)[number];
 
 interface Position {
-  id: string;
-  asset: string;
-  type: "LONG" | "SHORT";
-  size: number;
-  openPrice: number;
-  currentPrice: number;
-  pnl: number;
-  pnlPercentage: number;
-  openedAt: number;
-  leverage : number;
-  margin : number;
-  status: "OPEN" | "CLOSE";
+  id: string
+  asset: string
+  type: "LONG" | "SHORT"
+  size: number
+  openPrice: number
+  currentPrice: number
+  pnl: number
+  pnlPercentage?: number
+  userId?: string
+  openedAt: number
+  leverage: number
+  margin: number
+  closedAt?: number
+  status: "OPEN" | "CLOSE"
+  slippage?: number
+  qty: number
+  closePrice?: number
 }
 
 function TradingInterface() {
@@ -66,13 +72,16 @@ function TradingInterface() {
   const [slippage, setSlippage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [latestPrices, setLatestPrices] = useState<
-    Record<string, { price: number }>
+    Record<string, { ask: number, decimal : number, bid: number }>
   >({});
+  const { isConnected, socket } = useSocket();
 
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<any>(null);
   const candlestickSeriesRef = useRef<any | null>(null);
   const [interval, setTicksInterval] = useState<Interval>("1m");
+
+  const usdtDecimals = DecimalsMap["USDT"];
 
   const fetchChartData = async () => {
     setLoading(true);
@@ -81,8 +90,9 @@ function TradingInterface() {
       const startTime = endTime - 7 * 24 * 60 * 60 * 1000;
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/klines?asset=${selectedInstrument.toUpperCase()}&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=1000`, {
-          credentials : "include"
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/klines?asset=${selectedInstrument.toUpperCase()}&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=1000`,
+        {
+          credentials: "include",
         }
       );
 
@@ -132,31 +142,34 @@ function TradingInterface() {
     return price / 10 ** decimals;
   };
 
-  const handleCalculatePNL = (
-    side: "BUY" | "SELL",
-    symbol: string,
-    price: number,
-    quantity: number
-  ) => {
-    const latestPrice = latestPrices[symbol]?.price || 0;
+  // const handleCalculatePNL = (
+  //   side: "BUY" | "SELL",
+  //   symbol: string,
+  //   price: number,
+  //   quantity: number
+  // ) => {
+  //   const latestPrice = latestPrices[symbol]?.price || 0;
 
-    const decimal = DecimalsMap[symbol];
-    let pnl;
-    if (side === "BUY") {
-      pnl = (latestPrice / 10 ** decimal - price / 10 ** decimal) * quantity;
-    } else {
-      pnl = (price / 10 ** decimal - latestPrice / 10 ** decimal) * quantity;
-    }
+  //   const decimal = DecimalsMap[symbol];
+  //   let pnl;
+  //   if (side === "BUY") {
+  //     pnl = (latestPrice / 10 ** decimal - price / 10 ** decimal) * quantity;
+  //   } else {
+  //     pnl = (price / 10 ** decimal - latestPrice / 10 ** decimal) * quantity;
+  //   }
 
-    return Number(pnl.toFixed(decimal));
-  };
+  //   return Number(pnl.toFixed(decimal));
+  // };
 
   const fetchUserBalance = async () => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/user/balance/usd`, {
-        credentials: "include",
-        method : "GET"
-      });
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/user/balance/usd`,
+        {
+          credentials: "include",
+          method: "GET",
+        }
+      );
       const data = await res.json();
       setBalance(handleParsePrice("USDT", data.usdBalance));
     } catch (error: any) {
@@ -167,10 +180,13 @@ function TradingInterface() {
   const fetchOpenPositions = async () => {
     setPositionsLoading(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/positions/open`, {
-        credentials: "include",
-        method : "GET"
-      });
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/positions/open`,
+        {
+          credentials: "include",
+          method: "GET",
+        }
+      );
       const data = await res.json();
       setOpenPositions(data);
     } catch (error: any) {
@@ -185,9 +201,12 @@ function TradingInterface() {
   const fetchClosedPositions = async () => {
     setPositionsLoading(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/positions/closed`, {
-        credentials: "include",
-      });
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/positions/closed`,
+        {
+          credentials: "include",
+        }
+      );
       const data = await res.json();
       setClosedPositions(data);
     } catch (error: any) {
@@ -291,7 +310,7 @@ function TradingInterface() {
         const response = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/api/v1/klines?asset=${selectedInstrument.toUpperCase()}&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=2`,
           {
-            credentials : "include"
+            credentials: "include",
           }
         );
 
@@ -334,16 +353,64 @@ function TradingInterface() {
   }, [selectedInstrument, interval]);
 
   useEffect(() => {
+    if (!socket || !isConnected) return;
+
+    socket.onmessage = ({ data }) => {
+      const payload = JSON.parse(data.toString());
+
+      switch (payload.type) {
+        case "ALL_PRICES": {
+          const data = payload.data;
+          setLatestPrices(data);
+        }
+      }
+    };
+  }, [socket, isConnected]);
+
+  useEffect(() => {
+    if (!openPositions.length || !Object.keys(latestPrices).length) return;
+  
+    setOpenPositions((prevPositions) =>
+      prevPositions.map((pos) => {
+        
+        let currentPrice =
+        pos.type === "LONG"
+          ? latestPrices[pos.asset]?.bid / 10 ** latestPrices[pos.asset]?.decimal
+          : latestPrices[pos.asset]?.ask / 10 ** latestPrices[pos.asset]?.decimal;
+
+          const openPrice = pos.openPrice / 10 ** latestPrices[pos.asset].decimal;
+
+      const pnl =
+        pos.type === "LONG"
+          ? (currentPrice - openPrice) * pos.qty!
+          : (openPrice - currentPrice) * pos.qty!;
+
+        const pnlPercentage = (pnl / (pos.margin / 10 ** usdtDecimals)) * 100;
+  
+        return {
+          ...pos,
+          currentPrice: currentPrice,
+          pnl,
+          pnlPercentage,
+        };
+      })
+    );
+  }, [latestPrices]);
+
+  useEffect(() => {
     fetchUserBalance();
     fetchOpenPositions();
   }, []);
 
   const handleCancelPosition = async (positionId: string) => {
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/trade/close/${positionId}`, {
-        method: "POST",
-        credentials: "include",
-      });
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/trade/close/${positionId}`,
+        {
+          method: "POST",
+          credentials: "include",
+        }
+      );
 
       const data = await res.json();
       fetchUserBalance();
@@ -365,20 +432,23 @@ function TradingInterface() {
     setIsLoading(true);
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/trade/create`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          asset: selectedInstrument,
-          type: tradeType,
-          margin: Number.parseFloat(margin),
-          leverage: leverage,
-          slippage: slippage,
-        }),
-      });
+      const response = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/trade/create`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            asset: selectedInstrument,
+            type: tradeType,
+            margin: Number.parseFloat(margin),
+            leverage: leverage,
+            slippage: slippage,
+          }),
+        }
+      );
 
       if (response.ok) {
         const result = await response.json();
@@ -387,7 +457,7 @@ function TradingInterface() {
         setLeverage(1);
         setSlippage(1);
         toast.success("Trade created successfully!");
-        setOpenPositions((prev) => [...prev, result.result])
+        setOpenPositions((prev) => [...prev, result.result]);
 
         fetchUserBalance();
         if (activeTab === "open") {
@@ -602,14 +672,14 @@ function TradingInterface() {
                       Total P&L:
                       <span
                         className={`ml-1 font-medium ${
-                          openPositions.reduce((sum, p) => sum + p.pnl, 0) >= 0
+                          openPositions.reduce((sum, p) => sum + (p.pnl / 10 ** usdtDecimals), 0) >= 0
                             ? "text-emerald-600"
                             : "text-red-600"
                         }`}
                       >
                         $
                         {openPositions
-                          .reduce((sum, p) => sum + p.pnl, 0)
+                          .reduce((sum, p) => sum + (p.pnl / 10 ** usdtDecimals), 0)
                           .toFixed(2)}
                       </span>
                     </span>
@@ -620,6 +690,7 @@ function TradingInterface() {
                       <PositionRow
                         key={position.id}
                         onCancelPosition={handleCancelPosition}
+                        currentPrice={position.type === "LONG" ? latestPrices[position.asset]?.bid || 0 : latestPrices[position.asset]?.ask || 0}
                         position={position}
                         showCloseButton={true}
                       />
@@ -649,7 +720,7 @@ function TradingInterface() {
                       Historical P&L:
                       <span
                         className={`ml-1 font-medium ${
-                          closedPositions.reduce((sum, p) => sum + p.pnl, 0) >=
+                          closedPositions.reduce((sum, p) => sum + (p.pnl / 10 ** DecimalsMap["USDT"]), 0) >=
                           0
                             ? "text-emerald-600"
                             : "text-red-600"
@@ -657,7 +728,7 @@ function TradingInterface() {
                       >
                         $
                         {closedPositions
-                          .reduce((sum, p) => sum + p.pnl, 0)
+                          .reduce((sum, p) => sum + (p.pnl / 10 ** DecimalsMap["USDT"]), 0)
                           .toFixed(2)}
                       </span>
                     </span>
@@ -669,6 +740,7 @@ function TradingInterface() {
                         onCancelPosition={handleCancelPosition}
                         key={position.id}
                         position={position}
+                        currentPrice={position.type === "LONG" ? latestPrices[position.asset]?.bid || 0 : latestPrices[position.asset]?.ask || 0}
                         showCloseButton={false}
                       />
                     ))}
