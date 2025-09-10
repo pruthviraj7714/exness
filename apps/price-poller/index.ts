@@ -10,6 +10,7 @@ interface IPriceData {
 }
 
 const marketFeed: Record<string, IPriceData> = {};
+const publisher = redisclient.duplicate();
 
 async function main() {
   const ws = new WebSocket(`wss://ws.backpack.exchange`);
@@ -38,8 +39,8 @@ async function main() {
     const symbolDecimals = DecimalsMap[asset]!;
 
     marketFeed[asset] = {
-      bid : parseFloat(payload.data.a) * 10 ** symbolDecimals,
-      ask : parseFloat(payload.data.b) * 10 ** symbolDecimals,
+      bid: parseFloat(payload.data.a) * 10 ** symbolDecimals,
+      ask: parseFloat(payload.data.b) * 10 ** symbolDecimals,
       decimal: symbolDecimals,
       asset,
     };
@@ -47,11 +48,11 @@ async function main() {
 }
 
 setInterval(async () => {
-  const priceUpdateToEngin = {
+  const priceUpdates = {
     event: "PRICE_UPDATE",
     data: marketFeed,
   };
-  
+
   await redisclient.xadd(
     ENGINE_STREAM,
     "MAXLEN",
@@ -59,8 +60,11 @@ setInterval(async () => {
     1000,
     "*",
     "data",
-    JSON.stringify(priceUpdateToEngin),
+    JSON.stringify(priceUpdates)
   );
+
+  await publisher.publish("LATEST_PRICES", JSON.stringify(marketFeed));
+
   console.log("sent to stream:", marketFeed);
 }, 100);
 
