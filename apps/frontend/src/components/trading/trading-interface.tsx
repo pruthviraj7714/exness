@@ -20,6 +20,7 @@ import { Badge } from "../ui/badge";
 import PositionRow from "../PositionRow";
 import { DecimalsMap } from "@repo/common";
 import useSocket from "@/hooks/useSocket";
+import useBinanceKlines from "@/hooks/useBinanceKlines";
 
 type Candle = {
   time: UTCTimestamp;
@@ -34,23 +35,23 @@ const INTERVALS = ["1m", "5m", "15m", "30m", "1h", "4h", "1d"] as const;
 type Interval = (typeof INTERVALS)[number];
 
 interface Position {
-  id: string
-  asset: string
-  type: "LONG" | "SHORT"
-  size: number
-  openPrice: number
-  currentPrice: number
-  pnl: number
-  pnlPercentage?: number
-  userId?: string
-  openedAt: number
-  leverage: number
-  margin: number
-  closedAt?: number
-  status: "OPEN" | "CLOSE"
-  slippage?: number
-  qty: number
-  closePrice?: number
+  id: string;
+  asset: string;
+  type: "LONG" | "SHORT";
+  size: number;
+  openPrice: number;
+  currentPrice: number;
+  pnl: number;
+  pnlPercentage?: number;
+  userId?: string;
+  openedAt: number;
+  leverage: number;
+  margin: number;
+  closedAt?: number;
+  status: "OPEN" | "CLOSE";
+  slippage?: number;
+  qty: number;
+  closePrice?: number;
 }
 
 function TradingInterface() {
@@ -72,14 +73,14 @@ function TradingInterface() {
   const [slippage, setSlippage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [latestPrices, setLatestPrices] = useState<
-    Record<string, { ask: number, decimal : number, bid: number }>
+    Record<string, { ask: number; decimal: number; bid: number }>
   >({});
   const { isConnected, socket } = useSocket();
-
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<any>(null);
   const candlestickSeriesRef = useRef<any | null>(null);
   const [interval, setTicksInterval] = useState<Interval>("1m");
+  const { candleData: liveCandleData, connectionStatus } = useBinanceKlines(selectedInstrument, interval);
 
   const usdtDecimals = DecimalsMap["USDT"];
 
@@ -137,29 +138,32 @@ function TradingInterface() {
     }
   };
 
+  useEffect(() => {
+    if (liveCandleData.length > 0 && candlestickSeriesRef.current) {
+      setCandleData(prev => {
+        const combined = [...prev];
+        
+        liveCandleData.forEach(liveCandle => {
+          const existingIndex = combined.findIndex(c => c.open === liveCandle.time);
+          if (existingIndex >= 0) {
+            combined[existingIndex] = liveCandle;
+          } else if (!combined.length || liveCandle.time > combined[combined.length - 1].open) {
+            combined.push(liveCandle);
+          }
+        });
+
+        updatePriceInfo(combined);
+        candlestickSeriesRef.current?.setData(combined);
+        return combined;
+      });
+    }
+  }, [liveCandleData]);
+
+
   const handleParsePrice = (symbol: string, price: number) => {
     const decimals = DecimalsMap[symbol];
     return price / 10 ** decimals;
   };
-
-  // const handleCalculatePNL = (
-  //   side: "BUY" | "SELL",
-  //   symbol: string,
-  //   price: number,
-  //   quantity: number
-  // ) => {
-  //   const latestPrice = latestPrices[symbol]?.price || 0;
-
-  //   const decimal = DecimalsMap[symbol];
-  //   let pnl;
-  //   if (side === "BUY") {
-  //     pnl = (latestPrice / 10 ** decimal - price / 10 ** decimal) * quantity;
-  //   } else {
-  //     pnl = (price / 10 ** decimal - latestPrice / 10 ** decimal) * quantity;
-  //   }
-
-  //   return Number(pnl.toFixed(decimal));
-  // };
 
   const fetchUserBalance = async () => {
     try {
@@ -299,58 +303,58 @@ function TradingInterface() {
     };
   }, [selectedInstrument, interval]);
 
-  useEffect(() => {
-    let intervalId: NodeJS.Timeout;
+  // useEffect(() => {
+  //   let intervalId: NodeJS.Timeout;
 
-    const pollLatestCandle = async () => {
-      try {
-        const endTime = Date.now();
-        const startTime = endTime - 1000 * 60 * 60;
+  //   const pollLatestCandle = async () => {
+  //     try {
+  //       const endTime = Date.now();
+  //       const startTime = endTime - 1000 * 60 * 60;
 
-        const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/api/v1/klines?asset=${selectedInstrument.toUpperCase()}&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=2`,
-          {
-            credentials: "include",
-          }
-        );
+  //       const response = await fetch(
+  //         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/klines?asset=${selectedInstrument.toUpperCase()}&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=2`,
+  //         {
+  //           credentials: "include",
+  //         }
+  //       );
 
-        const data = await response.json();
+  //       const data = await response.json();
 
-        const newData = data.map((candle: any) => ({
-          time: Math.floor(candle.openTime / 1000) as UTCTimestamp,
-          open: parseFloat(candle.open),
-          high: parseFloat(candle.high),
-          low: parseFloat(candle.low),
-          close: parseFloat(candle.close),
-        }));
+  //       const newData = data.map((candle: any) => ({
+  //         time: Math.floor(candle.openTime / 1000) as UTCTimestamp,
+  //         open: parseFloat(candle.open),
+  //         high: parseFloat(candle.high),
+  //         low: parseFloat(candle.low),
+  //         close: parseFloat(candle.close),
+  //       }));
 
-        if (newData.length > 0) {
-          setCandleData((prev) => {
-            const updated = [...prev];
-            const last = updated[updated.length - 1];
+  //       if (newData.length > 0) {
+  //         setCandleData((prev) => {
+  //           const updated = [...prev];
+  //           const last = updated[updated.length - 1];
 
-            if (last && last.time === newData[newData.length - 1].time) {
-              updated[updated.length - 1] = newData[newData.length - 1];
-            } else {
-              updated.push(newData[newData.length - 1]);
-            }
+  //           if (last && last.time === newData[newData.length - 1].time) {
+  //             updated[updated.length - 1] = newData[newData.length - 1];
+  //           } else {
+  //             updated.push(newData[newData.length - 1]);
+  //           }
 
-            updatePriceInfo(updated);
-            candlestickSeriesRef.current?.setData(updated);
-            return updated;
-          });
-        }
-      } catch (err) {
-        console.error("Polling error:", err);
-      }
-    };
+  //           updatePriceInfo(updated);
+  //           candlestickSeriesRef.current?.setData(updated);
+  //           return updated;
+  //         });
+  //       }
+  //     } catch (err) {
+  //       console.error("Polling error:", err);
+  //     }
+  //   };
 
-    intervalId = setInterval(pollLatestCandle, 3000);
+  //   intervalId = setInterval(pollLatestCandle, 3000);
 
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, [selectedInstrument, interval]);
+  //   return () => {
+  //     clearInterval(intervalId);
+  //   };
+  // }, [selectedInstrument, interval]);
 
   useEffect(() => {
     if (!socket || !isConnected) return;
@@ -369,24 +373,26 @@ function TradingInterface() {
 
   useEffect(() => {
     if (!openPositions.length || !Object.keys(latestPrices).length) return;
-  
+
     setOpenPositions((prevPositions) =>
       prevPositions.map((pos) => {
-        
         let currentPrice =
-        pos.type === "LONG"
-          ? latestPrices[pos.asset]?.bid / 10 ** latestPrices[pos.asset]?.decimal
-          : latestPrices[pos.asset]?.ask / 10 ** latestPrices[pos.asset]?.decimal;
+          pos.type === "LONG"
+            ? latestPrices[pos.asset]?.bid /
+              10 ** latestPrices[pos.asset]?.decimal
+            : latestPrices[pos.asset]?.ask /
+              10 ** latestPrices[pos.asset]?.decimal;
 
-          const openPrice = pos.openPrice / 10 ** latestPrices[pos.asset].decimal;
+        const openPrice = pos.openPrice / 10 ** latestPrices[pos.asset].decimal;
 
-      const pnl =
-        pos.type === "LONG"
-          ? (currentPrice - openPrice) * pos.qty!
-          : (openPrice - currentPrice) * pos.qty!;
+        const pnl =
+          pos.type === "LONG"
+            ? (currentPrice - openPrice) * pos.qty!
+            : (openPrice - currentPrice) * pos.qty!;
 
-        const pnlPercentage = (pnl / (pos.margin / 10 ** usdtDecimals)) * 100;
-  
+        const pnlPercentage =
+          (pnl / ((pos.margin * pos.leverage) / 10 ** usdtDecimals)) * 100;
+
         return {
           ...pos,
           currentPrice: currentPrice,
@@ -672,14 +678,20 @@ function TradingInterface() {
                       Total P&L:
                       <span
                         className={`ml-1 font-medium ${
-                          openPositions.reduce((sum, p) => sum + (p.pnl / 10 ** usdtDecimals), 0) >= 0
+                          openPositions.reduce(
+                            (sum, p) => sum + p.pnl / 10 ** usdtDecimals,
+                            0
+                          ) >= 0
                             ? "text-emerald-600"
                             : "text-red-600"
                         }`}
                       >
                         $
                         {openPositions
-                          .reduce((sum, p) => sum + (p.pnl / 10 ** usdtDecimals), 0)
+                          .reduce(
+                            (sum, p) => sum + p.pnl / 10 ** usdtDecimals,
+                            0
+                          )
                           .toFixed(2)}
                       </span>
                     </span>
@@ -690,7 +702,11 @@ function TradingInterface() {
                       <PositionRow
                         key={position.id}
                         onCancelPosition={handleCancelPosition}
-                        currentPrice={position.type === "LONG" ? latestPrices[position.asset]?.bid || 0 : latestPrices[position.asset]?.ask || 0}
+                        currentPrice={
+                          position.type === "LONG"
+                            ? latestPrices[position.asset]?.bid || 0
+                            : latestPrices[position.asset]?.ask || 0
+                        }
                         position={position}
                         showCloseButton={true}
                       />
@@ -720,15 +736,20 @@ function TradingInterface() {
                       Historical P&L:
                       <span
                         className={`ml-1 font-medium ${
-                          closedPositions.reduce((sum, p) => sum + (p.pnl / 10 ** DecimalsMap["USDT"]), 0) >=
-                          0
+                          closedPositions.reduce(
+                            (sum, p) => sum + p.pnl / 10 ** DecimalsMap["USDT"],
+                            0
+                          ) >= 0
                             ? "text-emerald-600"
                             : "text-red-600"
                         }`}
                       >
                         $
                         {closedPositions
-                          .reduce((sum, p) => sum + (p.pnl / 10 ** DecimalsMap["USDT"]), 0)
+                          .reduce(
+                            (sum, p) => sum + p.pnl / 10 ** DecimalsMap["USDT"],
+                            0
+                          )
                           .toFixed(2)}
                       </span>
                     </span>
@@ -740,7 +761,11 @@ function TradingInterface() {
                         onCancelPosition={handleCancelPosition}
                         key={position.id}
                         position={position}
-                        currentPrice={position.type === "LONG" ? latestPrices[position.asset]?.bid || 0 : latestPrices[position.asset]?.ask || 0}
+                        currentPrice={
+                          position.type === "LONG"
+                            ? latestPrices[position.asset]?.bid || 0
+                            : latestPrices[position.asset]?.ask || 0
+                        }
                         showCloseButton={false}
                       />
                     ))}

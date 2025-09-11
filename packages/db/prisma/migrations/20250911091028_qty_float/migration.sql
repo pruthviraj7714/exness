@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "public"."Position" ALTER COLUMN "qty" SET DATA TYPE DOUBLE PRECISION;

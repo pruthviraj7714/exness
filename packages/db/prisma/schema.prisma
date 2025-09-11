@@ -30,10 +30,10 @@ model Position {
   type       PositionType
   userId     String
   openPrice  Int
-  qty        Int
+  qty        Float
   status     PositionStatus @default(OPEN)
   closePrice Int?
-  pnl        Int?
+  pnl        Float?
   openedAt   DateTime
   closedAt   DateTime?
 
