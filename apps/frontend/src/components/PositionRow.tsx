@@ -21,7 +21,6 @@ interface Position {
   openPrice: number;
   currentPrice: number;
   pnl?: number;
-  pnlPercentage?: number;
   userId?: string;
   openedAt: number;
   leverage: number;
@@ -222,16 +221,6 @@ const PositionRow = ({
             >
               {isProfitable ? "+" : ""}$
               {((position.pnl || 0) / 10 ** DecimalsMap["USDT"]).toFixed(2)}
-            </div>
-            <div
-              className={`text-sm font-medium ${
-                isProfitable
-                  ? "text-emerald-600 dark:text-emerald-400"
-                  : "text-red-600 dark:text-red-400"
-              }`}
-            >
-              {isProfitable ? "+" : ""}
-              {(position.pnlPercentage || 0).toFixed(2)}%
             </div>
           </div>
         </div>

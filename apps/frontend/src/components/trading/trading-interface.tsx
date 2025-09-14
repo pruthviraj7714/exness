@@ -42,7 +42,6 @@ interface Position {
   openPrice: number;
   currentPrice: number;
   pnl: number;
-  pnlPercentage?: number;
   userId?: string;
   openedAt: number;
   leverage: number;
@@ -60,7 +59,6 @@ function TradingInterface() {
   const [closedPositions, setClosedPositions] = useState<Position[]>([]);
   const [activeTab, setActiveTab] = useState<"open" | "closed">("open");
   const [positionsLoading, setPositionsLoading] = useState(false);
-
   const [candleData, setCandleData] = useState<Candle[]>([]);
   const [currentPrice, setCurrentPrice] = useState<number>(0);
   const [priceChange, setPriceChange] = useState<number>(0);
@@ -73,8 +71,8 @@ function TradingInterface() {
   const [slippage, setSlippage] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [latestPrices, setLatestPrices] = useState<
-    Record<string, { ask: number; decimal: number; bid: number }>
-  >({});
+  Record<string, { ask: number; decimal: number; bid: number; asset: string }>
+>({});
   const { isConnected, socket } = useSocket();
   const chartRef = useRef<HTMLDivElement>(null);
   const chartInstanceRef = useRef<any>(null);
@@ -97,6 +95,10 @@ function TradingInterface() {
         }
       );
 
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+
       const data = await response.json();
 
       const transformedData = data
@@ -114,7 +116,7 @@ function TradingInterface() {
     } catch (error: any) {
       console.error("Error fetching klines:", error);
       toast.error(
-        error.response?.data?.message || "Failed to fetch chart data"
+        error.response?.data?.message || error.message || "Failed to fetch chart data"
       );
       return [];
     } finally {
@@ -144,13 +146,15 @@ function TradingInterface() {
         const combined = [...prev];
         
         liveCandleData.forEach(liveCandle => {
-          const existingIndex = combined.findIndex(c => c.open === liveCandle.time);
+          const existingIndex = combined.findIndex(c => c.time === liveCandle.time);
           if (existingIndex >= 0) {
             combined[existingIndex] = liveCandle;
-          } else if (!combined.length || liveCandle.time > combined[combined.length - 1].open) {
+          } else if (!combined.length || liveCandle.time > combined[combined.length - 1].time) {
             combined.push(liveCandle);
           }
         });
+
+        combined.sort((a, b) => a.time - b.time);
 
         updatePriceInfo(combined);
         candlestickSeriesRef.current?.setData(combined);
@@ -158,7 +162,6 @@ function TradingInterface() {
       });
     }
   }, [liveCandleData]);
-
 
   const handleParsePrice = (symbol: string, price: number) => {
     const decimals = DecimalsMap[symbol];
@@ -174,10 +177,16 @@ function TradingInterface() {
           method: "GET",
         }
       );
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      
       const data = await res.json();
-      setBalance(handleParsePrice("USDT", data.usdBalance));
+      setBalance(data.usdBalance);
     } catch (error: any) {
-      toast.error(error.response?.data?.message ?? error.message);
+      console.error("Error fetching balance:", error);
+      toast.error(error.response?.data?.message ?? error.message ?? "Failed to fetch balance");
     }
   };
 
@@ -191,10 +200,16 @@ function TradingInterface() {
           method: "GET",
         }
       );
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      
       const data = await res.json();
       setOpenPositions(data);
     } catch (error: any) {
-      toast.error(error.response?.data?.message ?? error.message, {
+      console.error("Error fetching open positions:", error);
+      toast.error(error.response?.data?.message ?? error.message ?? "Failed to fetch open positions", {
         position: "top-center",
       });
     } finally {
@@ -211,10 +226,16 @@ function TradingInterface() {
           credentials: "include",
         }
       );
+      
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+      
       const data = await res.json();
       setClosedPositions(data);
     } catch (error: any) {
-      toast.error(error.response?.data?.message ?? error.message, {
+      console.error("Error fetching closed positions:", error);
+      toast.error(error.response?.data?.message ?? error.message ?? "Failed to fetch closed positions", {
         position: "top-center",
       });
     } finally {
@@ -303,105 +324,69 @@ function TradingInterface() {
     };
   }, [selectedInstrument, interval]);
 
-  // useEffect(() => {
-  //   let intervalId: NodeJS.Timeout;
-
-  //   const pollLatestCandle = async () => {
-  //     try {
-  //       const endTime = Date.now();
-  //       const startTime = endTime - 1000 * 60 * 60;
-
-  //       const response = await fetch(
-  //         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/klines?asset=${selectedInstrument.toUpperCase()}&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=2`,
-  //         {
-  //           credentials: "include",
-  //         }
-  //       );
-
-  //       const data = await response.json();
-
-  //       const newData = data.map((candle: any) => ({
-  //         time: Math.floor(candle.openTime / 1000) as UTCTimestamp,
-  //         open: parseFloat(candle.open),
-  //         high: parseFloat(candle.high),
-  //         low: parseFloat(candle.low),
-  //         close: parseFloat(candle.close),
-  //       }));
-
-  //       if (newData.length > 0) {
-  //         setCandleData((prev) => {
-  //           const updated = [...prev];
-  //           const last = updated[updated.length - 1];
-
-  //           if (last && last.time === newData[newData.length - 1].time) {
-  //             updated[updated.length - 1] = newData[newData.length - 1];
-  //           } else {
-  //             updated.push(newData[newData.length - 1]);
-  //           }
-
-  //           updatePriceInfo(updated);
-  //           candlestickSeriesRef.current?.setData(updated);
-  //           return updated;
-  //         });
-  //       }
-  //     } catch (err) {
-  //       console.error("Polling error:", err);
-  //     }
-  //   };
-
-  //   intervalId = setInterval(pollLatestCandle, 3000);
-
-  //   return () => {
-  //     clearInterval(intervalId);
-  //   };
-  // }, [selectedInstrument, interval]);
-
   useEffect(() => {
     if (!socket || !isConnected) return;
 
-    socket.onmessage = ({ data }) => {
-      const payload = JSON.parse(data.toString());
+    const handleMessage = ({ data }: MessageEvent) => {
+      try {
+        const payload = JSON.parse(data.toString());
 
-      switch (payload.type) {
-        case "ALL_PRICES": {
-          const data = payload.data;
-          setLatestPrices(data);
+        switch (payload.type) {
+          case "ALL_PRICES": {
+            const priceData = payload.data;
+            
+            setLatestPrices(priceData);
+            
+            if (priceData[selectedInstrument]) {
+              const instrumentPrice = priceData[selectedInstrument];
+              const price = (instrumentPrice.bid + instrumentPrice.ask) / 2 / (10 ** instrumentPrice.decimal);
+              setCurrentPrice(price);
+            }
+            break;
+          }
         }
+      } catch (error) {
+        console.error("Error parsing socket message:", error);
       }
     };
-  }, [socket, isConnected]);
+
+    socket.onmessage = handleMessage;
+
+    return () => {
+      if (socket.onmessage === handleMessage) {
+        socket.onmessage = null;
+      }
+    };
+  }, [socket, isConnected, selectedInstrument]);
 
   useEffect(() => {
     if (!openPositions.length || !Object.keys(latestPrices).length) return;
 
     setOpenPositions((prevPositions) =>
       prevPositions.map((pos) => {
+        const priceData = latestPrices[pos.asset];
+        if (!priceData) return pos;
+
         let currentPrice =
           pos.type === "LONG"
-            ? latestPrices[pos.asset]?.bid /
-              10 ** latestPrices[pos.asset]?.decimal
-            : latestPrices[pos.asset]?.ask /
-              10 ** latestPrices[pos.asset]?.decimal;
+            ? priceData.bid / (10 ** priceData.decimal)
+            : priceData.ask / (10 ** priceData.decimal);
 
-        const openPrice = pos.openPrice / 10 ** latestPrices[pos.asset].decimal;
+        const openPrice = pos.openPrice / (10 ** priceData.decimal);
 
         const pnl =
           pos.type === "LONG"
-            ? (currentPrice - openPrice) * pos.qty!
-            : (openPrice - currentPrice) * pos.qty!;
-
-        const pnlPercentage =
-          (pnl / ((pos.margin * pos.leverage) / 10 ** usdtDecimals)) * 100;
+            ? (currentPrice - openPrice) * pos.qty
+            : (openPrice - currentPrice) * pos.qty;
 
         return {
           ...pos,
-          currentPrice: currentPrice,
+          currentPrice,
           pnl,
-          pnlPercentage,
         };
       })
     );
-  }, [latestPrices]);
+  }, [latestPrices, usdtDecimals]);
 
   useEffect(() => {
     fetchUserBalance();
@@ -418,6 +403,10 @@ function TradingInterface() {
         }
       );
 
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+
       const data = await res.json();
       fetchUserBalance();
       if (activeTab === "open") {
@@ -425,9 +414,10 @@ function TradingInterface() {
       } else {
         fetchClosedPositions();
       }
-      toast.success(data.message, { position: "top-center" });
+      toast.success(data.message || "Position closed successfully", { position: "top-center" });
     } catch (error: any) {
-      toast.error(error.response?.data?.message ?? error.message, {
+      console.error("Error closing position:", error);
+      toast.error(error.response?.data?.message ?? error.message ?? "Failed to close position", {
         position: "top-center",
       });
     }
@@ -456,24 +446,27 @@ function TradingInterface() {
         }
       );
 
+      const result = await response.json();
+
       if (response.ok) {
-        const result = await response.json();
         console.log("Trade created:", result);
         setMargin("");
         setLeverage(1);
         setSlippage(1);
         toast.success("Trade created successfully!");
-        setOpenPositions((prev) => [...prev, result.result]);
+        
+        if (result.result) {
+          setOpenPositions((prev) => [...prev, result.result]);
+        }
 
         fetchUserBalance();
         if (activeTab === "open") {
           fetchOpenPositions();
         }
       } else {
-        const error = await response.json();
-        toast.error(`Error: ${error.error}`);
+        toast.error(`Error: ${result.error || result.message || "Failed to create trade"}`);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("[v0] Trade creation error:", error);
       toast.error("Failed to create trade");
     } finally {
@@ -504,6 +497,11 @@ function TradingInterface() {
                     {loading && (
                       <span className="ml-2 text-sm text-gray-500">
                         Loading...
+                      </span>
+                    )}
+                    {connectionStatus !== "Connected" && (
+                      <span className="ml-2 text-xs text-yellow-500">
+                        ({connectionStatus})
                       </span>
                     )}
                   </div>
@@ -550,6 +548,9 @@ function TradingInterface() {
           <Card>
             <CardHeader>
               <CardTitle>Place Trade - {selectedInstrument}</CardTitle>
+              <div className="text-sm text-muted-foreground">
+                Balance: ${balance.toFixed(2)}
+              </div>
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -583,7 +584,8 @@ function TradingInterface() {
                     onChange={(e) => setMargin(e.target.value)}
                     placeholder="Enter margin amount"
                     min="1"
-                    className="mt-5"
+                    max={balance}
+                    className="mt-1"
                     step="0.01"
                     required
                   />
@@ -622,7 +624,7 @@ function TradingInterface() {
                 <Button
                   type="submit"
                   className="w-full"
-                  disabled={isLoading || !margin}
+                  disabled={isLoading || !margin || parseFloat(margin) <= 0 || parseFloat(margin) > balance}
                 >
                   {isLoading ? "Creating Trade..." : `Place ${tradeType} Order`}
                 </Button>
@@ -679,7 +681,7 @@ function TradingInterface() {
                       <span
                         className={`ml-1 font-medium ${
                           openPositions.reduce(
-                            (sum, p) => sum + p.pnl / 10 ** usdtDecimals,
+                            (sum, p) => sum + (p.pnl / (10 ** usdtDecimals)),
                             0
                           ) >= 0
                             ? "text-emerald-600"
@@ -689,7 +691,7 @@ function TradingInterface() {
                         $
                         {openPositions
                           .reduce(
-                            (sum, p) => sum + p.pnl / 10 ** usdtDecimals,
+                            (sum, p) => sum + (p.pnl / (10 ** usdtDecimals)),
                             0
                           )
                           .toFixed(2)}
@@ -737,7 +739,7 @@ function TradingInterface() {
                       <span
                         className={`ml-1 font-medium ${
                           closedPositions.reduce(
-                            (sum, p) => sum + p.pnl / 10 ** DecimalsMap["USDT"],
+                            (sum, p) => sum + (p.pnl / (10 ** DecimalsMap["USDT"])),
                             0
                           ) >= 0
                             ? "text-emerald-600"
@@ -747,7 +749,7 @@ function TradingInterface() {
                         $
                         {closedPositions
                           .reduce(
-                            (sum, p) => sum + p.pnl / 10 ** DecimalsMap["USDT"],
+                            (sum, p) => sum + (p.pnl / (10 ** DecimalsMap["USDT"])),
                             0
                           )
                           .toFixed(2)}
