@@ -39,8 +39,8 @@ async function main() {
     const symbolDecimals = DecimalsMap[asset]!;
 
     marketFeed[asset] = {
-      bid: parseFloat(payload.data.a) * 10 ** symbolDecimals,
-      ask: parseFloat(payload.data.b) * 10 ** symbolDecimals,
+      bid: parseFloat(payload.data.b) * 10 ** symbolDecimals,
+      ask: parseFloat(payload.data.a) * 10 ** symbolDecimals,
       decimal: symbolDecimals,
       asset,
     };
