@@ -50,7 +50,7 @@ export default function SignInPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center space-x-2 mb-6">
-            <TrendingUp className="h-8 w-8 text-primary" />
+            <TrendingUp className="h-8 w-8 text-emerald-400" />
             <span className="text-2xl font-bold text-foreground">TradePro</span>
           </Link>
           <h1 className="text-2xl font-bold text-foreground">Welcome Back</h1>
@@ -98,7 +98,7 @@ export default function SignInPage() {
                   </Alert>
                 )}
 
-                <Button type="submit" className="w-full" disabled={isLoading}>
+                <Button type="submit" className="w-full text-white bg-emerald-400 hover:bg-emerald-400/90" disabled={isLoading}>
                   {isLoading ? "Sending Link..." : "Send Sign-In Link"}
                 </Button>
               </form>
@@ -107,7 +107,7 @@ export default function SignInPage() {
             <div className="mt-6 text-center">
               <p className="text-sm text-muted-foreground">
                 Don't have an account?{" "}
-                <Link href="/signup" className="text-primary hover:underline">
+                <Link href="/signup" className="text-emerald-400 hover:underline">
                   Sign up
                 </Link>
               </p>

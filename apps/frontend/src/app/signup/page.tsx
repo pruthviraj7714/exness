@@ -48,7 +48,7 @@ export default function SignUpPage() {
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center space-x-2 mb-6">
-            <TrendingUp className="h-8 w-8 text-primary" />
+            <TrendingUp className="h-8 w-8 text-emerald-400" />
             <span className="text-2xl font-bold text-foreground">TradePro</span>
           </Link>
           <h1 className="text-2xl font-bold text-foreground">Create Your Account</h1>
@@ -93,7 +93,7 @@ export default function SignUpPage() {
                   </Alert>
                 )}
 
-                <Button type="submit" className="w-full" disabled={isLoading}>
+                <Button type="submit" className="w-full text-white bg-emerald-400 hover:bg-emerald-400/90" disabled={isLoading}>
                   {isLoading ? "Creating Account..." : "Create Account"}
                 </Button>
               </form>
@@ -102,7 +102,7 @@ export default function SignUpPage() {
             <div className="mt-6 text-center">
               <p className="text-sm text-muted-foreground">
                 Already have an account?{" "}
-                <Link href="/signin" className="text-primary hover:underline">
+                <Link href="/signin" className="text-emerald-400 hover:underline">
                   Sign in
                 </Link>
               </p>

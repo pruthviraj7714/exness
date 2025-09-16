@@ -220,7 +220,7 @@ const PositionRow = ({
               }`}
             >
               {isProfitable ? "+" : ""}$
-              {((position.pnl || 0) / 10 ** DecimalsMap["USDT"]).toFixed(2)}
+              {((position.pnl || 0)).toFixed(2)}
             </div>
           </div>
         </div>
