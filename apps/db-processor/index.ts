@@ -6,6 +6,7 @@ import type {
   OrderEvent,
 } from "./types/types";
 import prisma from "@repo/db";
+import { DecimalsMap} from '@repo/common';
 
 const createConsumerGroup = async () => {
   try {
@@ -93,6 +94,9 @@ const handleInsertClosedOrder = async (event: ICloseOrderEvent) => {
             usdBalance: event.finalBalance,
           },
         });
+
+        const pnl = event.pnl / 10 ** DecimalsMap["USDT"]!;
+
         await tx.position.update({
           where: {
             id: event.id,
@@ -100,7 +104,7 @@ const handleInsertClosedOrder = async (event: ICloseOrderEvent) => {
           data: {
             userId: event.userId,
             closedAt: new Date(event.closedAt),
-            pnl: event.pnl,
+            pnl,
             closePrice: event.closePrice,
             status: "CLOSE",
           },
