@@ -6,10 +6,12 @@ const klinesRouter = Router();
 
 klinesRouter.get("/", authMiddleware, async (req, res) => {
   try {
-    const { asset, interval, startTime, endTime, limit } = req.query;
+    const { asset, interval, limit } = req.query;
 
     if (!asset || !interval) {
-      return res.status(400).json({ message: "Asset and interval are required query params" });
+      return res
+        .status(400)
+        .json({ message: "Asset and interval are required query params" });
     }
 
     const params: Record<string, any> = {
@@ -17,17 +19,30 @@ klinesRouter.get("/", authMiddleware, async (req, res) => {
       interval,
     };
 
+    const endTime = Date.now();
+    const startTime = endTime - 90 * 24 * 60 * 60 * 1000;
+
     if (startTime) params.startTime = Number(startTime);
     if (endTime) params.endTime = Number(endTime);
     if (limit) params.limit = Number(limit);
 
-    const { data } = await axios.get("https://api.binance.com/api/v3/klines", { params });
+    const now = Date.now();
+    if (params.startTime > now) {
+      params.startTime = now - 90 * 24 * 60 * 60 * 1000;
+    }
+    if (params.endTime > now) {
+      params.endTime = now;
+    }
+
+    const { data } = await axios.get("https://api.binance.com/api/v3/klines", {
+      params,
+    });
 
     if (!Array.isArray(data)) {
       return res.status(502).json({ message: "Invalid response from Binance" });
     }
 
-    const candles = data.map(c => ({
+    const candles = data.map((c) => ({
       openTime: c[0],
       open: c[1],
       high: c[2],

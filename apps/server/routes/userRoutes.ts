@@ -13,6 +13,8 @@ import { DecimalsMap } from "@repo/common";
 
 const userRouter = Router();
 
+const INITIAL_USD_BALANCE = 5000;
+
 userRouter.post("/signup", async (req, res) => {
   try {
     const { email } = req.body;
@@ -40,6 +42,7 @@ userRouter.post("/signup", async (req, res) => {
     const user = await prisma.user.create({
       data: {
         email,
+        usdBalance : INITIAL_USD_BALANCE * 10 ** DecimalsMap["USDT"]!
       },
     });
 

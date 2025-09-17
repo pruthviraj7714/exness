@@ -1,8 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { verifyAuthToken } from "@/lib/auth";
-import { Button } from "@/components/ui/button";
-import { TrendingUp, LogOut } from "lucide-react";
 import TradingInterface from "@/components/trading/trading-interface";
 
 export default async function DashboardPage() {
