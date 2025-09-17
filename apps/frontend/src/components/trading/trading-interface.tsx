@@ -92,7 +92,7 @@ function TradingInterface() {
       const startTime = endTime - 90 * 24 * 60 * 60 * 1000;
 
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/klines?asset=${selectedInstrument.toUpperCase()}&interval=${interval}&startTime=${startTime}&endTime=${endTime}`,
+        `${process.env.NEXT_PUBLIC_API_URL}/api/v1/klines?asset=${selectedInstrument.toUpperCase()}&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=1000`,
         {
           credentials: "include",
         }

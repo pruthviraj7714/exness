@@ -138,7 +138,7 @@ export default function InstrumentList(props: InstrumentListProps) {
     return (
       <div
         className={cn(
-          "flex items-center gap-2 font-medium tabular-nums",
+          "flex items-center gap-2 font-medium text-sm tabular-nums",
           isUp && "text-emerald-600",
           isDown && "text-red-600"
         )}
@@ -183,9 +183,9 @@ export default function InstrumentList(props: InstrumentListProps) {
         <table className="w-full text-xs">
           <thead className="bg-muted/20 text-muted-foreground">
             <tr>
-              <th className="px-2 py-1 font-normal text-center">Symbol</th>
-              <th className="px-2 py-1 font-normal text-center w-28">Bid</th>
-              <th className="px-2 py-1 font-normal text-center w-28">Ask</th>
+              <th className="px-2 py-1 font-normal text-sm text-center">Symbol</th>
+              <th className="px-2 py-1 font-normal text-sm text-center w-28">Bid</th>
+              <th className="px-2 py-1 font-normal text-sm text-center w-28">Ask</th>
             </tr>
           </thead>
           <tbody>
@@ -214,7 +214,7 @@ export default function InstrumentList(props: InstrumentListProps) {
                         alt={`${m.asset} logo`}
                         className="h-4 w-4 rounded-sm"
                       />
-                      <span className="font-medium text-white">
+                      <span className="font-medium text-sm text-white">
                         {m.asset}
                       </span>
                     </div>
