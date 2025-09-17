@@ -20,7 +20,7 @@ klinesRouter.get("/", authMiddleware, async (req, res) => {
     };
 
     const endTime = Date.now();
-    const startTime = endTime - 90 * 24 * 60 * 60 * 1000;
+    const startTime = endTime - 90 * 24 * 60 * 60;
 
     if (startTime) params.startTime = Number(startTime);
     if (endTime) params.endTime = Number(endTime);
@@ -28,7 +28,7 @@ klinesRouter.get("/", authMiddleware, async (req, res) => {
 
     const now = Date.now();
     if (params.startTime > now) {
-      params.startTime = now - 90 * 24 * 60 * 60 * 1000;
+      params.startTime = now - 90 * 24 * 60 * 60;
     }
     if (params.endTime > now) {
       params.endTime = now;
