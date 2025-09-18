@@ -523,15 +523,10 @@ function TradingInterface() {
                 <div className="text-right">
                   <div className="text-2xl font-bold text-white">
                     ${currentPrice.toFixed(4)}
-                    {loading && (
-                      <span className="ml-2 text-sm text-zinc-400 animate-pulse">
-                        Loading...
-                      </span>
-                    )}
-                    {connectionStatus !== "Connected" && (
-                      <span className="ml-2 text-xs px-2 py-1 bg-yellow-500/20 text-yellow-400 rounded-full border border-yellow-500/30">
-                        {connectionStatus}
-                      </span>
+                  {loading && (
+                  <span className="ml-2">
+                    <span className="inline-block w-4 h-4 border-2 border-zinc-400 border-t-transparent rounded-full animate-spin"></span>
+                  </span>
                     )}
                   </div>
                   <div
@@ -546,7 +541,6 @@ function TradingInterface() {
                 </div>
               </CardTitle>
 
-              {/* Interval Buttons */}
               <div className="flex flex-wrap gap-2 mt-4">
                 {INTERVALS.map((int) => (
                   <Button
@@ -580,7 +574,6 @@ function TradingInterface() {
                   className="w-full h-[350px] bg-zinc-900/50 rounded-lg border border-zinc-800/30 shadow-inner"
                 />
 
-                {/* Chart overlay effects */}
                 <div className="absolute inset-0 bg-gradient-to-t from-zinc-900/20 via-transparent to-zinc-900/20 rounded-lg pointer-events-none"></div>
 
                 {candleData.length === 0 && !loading && (
@@ -774,7 +767,6 @@ function TradingInterface() {
           </Card>
         </div>
 
-        {/* Trading Panel */}
         <div className="lg:col-span-1 space-y-6">
           <Card className="border border-zinc-800/50 bg-zinc-950/50 backdrop-blur-xl">
             <CardHeader className="pb-4">
@@ -797,7 +789,6 @@ function TradingInterface() {
 
             <CardContent className="space-y-6">
               <form onSubmit={handleSubmit} className="space-y-6">
-                {/* Trade Type Buttons */}
                 <div className="grid grid-cols-2 gap-3">
                   <Button
                     type="button"
@@ -834,7 +825,6 @@ function TradingInterface() {
                   </Button>
                 </div>
 
-                {/* Margin Input */}
                 <div className="space-y-2">
                   <Label htmlFor="margin" className="text-zinc-300 font-medium">
                     Margin ($)
@@ -857,7 +847,6 @@ function TradingInterface() {
                   </div>
                 </div>
 
-                {/* Leverage Slider */}
                 <div className="space-y-3">
                   <Label
                     htmlFor="leverage"
@@ -892,7 +881,6 @@ function TradingInterface() {
                   </div>
                 </div>
 
-                {/* Slippage Input */}
                 <div className="space-y-2">
                   <Label
                     htmlFor="slippage"
@@ -917,7 +905,6 @@ function TradingInterface() {
                   </div>
                 </div>
 
-                {/* Submit Button */}
                 <Button
                   type="submit"
                   disabled={
